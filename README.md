@@ -5,6 +5,8 @@
 
 프로젝트 아고라(AI 융합교육 교사연구회) "AI 체육수업 팀빌딩" 연구용으로 만들었습니다.
 
+**👉 바로 사용하기: https://dlwnsdyd21-del.github.io/agora-teambuilder/**
+
 ## 실행
 
 - 가장 간단한 방법: `index.html`을 더블클릭해서 브라우저(Chrome·Edge)로 엽니다.
@@ -16,7 +18,7 @@ python -m http.server 8765
 
 후 `http://localhost:8765` 접속.
 
-- GitHub Pages 배포: 저장소에 이 폴더를 그대로 올리고 Pages를 켜면 됩니다(빌드 없음).
+- GitHub Pages 배포: 저장소 `dlwnsdyd21-del/agora-teambuilder`의 `main` 브랜치 루트에서 바로 서비스됩니다(빌드 없음). `main`에 푸시하면 1~2분 뒤 반영됩니다.
 
 ## 사용 순서
 
