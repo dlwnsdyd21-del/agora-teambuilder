@@ -3,10 +3,10 @@
 const assert = require('assert');
 const path = require('path');
 const Q = require(path.join(__dirname, '..', 'js', 'questions.js'));
+const T = require(path.join(__dirname, '..', 'js', 'paps_table.js'));
 const S = require(path.join(__dirname, '..', 'js', 'scoring.js'));
 const A = require(path.join(__dirname, '..', 'js', 'algorithm.js'));
-let P = null;
-try { P = require(path.join(__dirname, '..', 'js', 'parse.js')); } catch (e) { /* parse.js 아직 없음 */ }
+const P = require(path.join(__dirname, '..', 'js', 'parse.js'));
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -15,7 +15,7 @@ function test(name, fn) {
 }
 function approx(a, b, eps) { assert.ok(Math.abs(a - b) <= (eps || 1e-9), `${a} ≠ ${b}`); }
 
-/* ---------- 합성 데이터 ---------- */
+/* ---------- 합성 데이터 (중1) ---------- */
 function rng(seed) { return A.mulberry32(seed); }
 function makeStudents(n, seed, opts) {
   opts = opts || {};
@@ -24,17 +24,74 @@ function makeStudents(n, seed, opts) {
   for (let i = 0; i < n; i++) {
     const gender = opts.noGender ? null : (i % 2 === 0 ? '남' : '여');
     const items = [];
-    const base = 2.5 + r() * 2; // 학생별 성향
+    const base = 2.5 + r() * 2;
     for (let k = 0; k < 32; k++) items.push(Math.max(1, Math.min(5, Math.round(base + (r() - 0.5) * 2))));
+    const m = gender !== '여';
     out.push({
-      id: 'S' + (i + 1), no: i + 1, name: '학생' + (i + 1), gender,
-      papsRaw: { run: 20 + Math.floor(r() * 60), flex1: r() * 30 - 5, flex2: r() * 30 - 5, situp: Math.floor(r() * 100),
-                 jump1: 100 + r() * 130, jump2: 100 + r() * 130, height: 150 + r() * 30, weight: 40 + r() * 40 },
+      id: 'S' + (i + 1), no: i + 1, name: '학생' + (i + 1), gender, grade: 1,
+      papsRaw: { run: Math.floor((m ? 15 : 10) + r() * (m ? 60 : 55)), flex1: r() * 30 - 5, flex2: r() * 30 - 5, situp: Math.floor(r() * (m ? 130 : 62)),
+                 jump1: (m ? 120 : 90) + r() * 100, jump2: (m ? 120 : 90) + r() * 100, height: 150 + r() * 25, weight: 40 + r() * 35 },
       papsGiven: null, items, virtuesGiven: null
     });
   }
   return out;
 }
+
+console.log('\n[paps_table]');
+test('별표5 예시: 초5 남 왕복오래달리기 점수 구간', () => {
+  const bands = T.BANDS['남'].run['초5'];
+  const pts = v => T.pointsFromBands(v, bands, 1, false).points;
+  assert.deepStrictEqual([21, 22, 23, 24, 25, 26, 27, 28].map(pts), [0, 0, 1, 1, 2, 2, 3, 3]);
+  assert.deepStrictEqual([29, 33, 34, 39, 40, 44, 45, 49].map(pts), [4, 4, 5, 5, 6, 6, 7, 7]);
+  assert.deepStrictEqual([100, 101, 102, 103, 104, 105, 106, 107, 150].map(pts), [16, 16, 17, 17, 18, 19, 19, 20, 20]);
+  assert.strictEqual(T.pointsFromBands(50, bands, 1, false).grade, 3);
+  assert.strictEqual(T.pointsFromBands(73, bands, 1, false).grade, 2);
+  // 3등급 50~72 → 8~11, 2등급 73~99 → 12~15, 단조 증가
+  let prev = -1;
+  for (let v = 20; v <= 110; v++) { const p = pts(v); assert.ok(p >= prev, 'monotonic at ' + v); prev = p; }
+  assert.ok(pts(50) === 8 && pts(72) === 11 && pts(73) === 12 && pts(99) === 15);
+});
+test('시간 종목(50m)은 낮을수록 좋음, 소수 종목(cm) 0.1 단위', () => {
+  const b50 = T.BANDS['남'].run50['중1'];
+  const p = v => T.pointsFromBands(v, b50, 0.01, true);
+  assert.strictEqual(p(12.60).points, 0); assert.strictEqual(p(12.51).points, 0);
+  assert.strictEqual(p(7.40).points, 20); assert.strictEqual(p(7.0).points, 20);
+  assert.ok(p(7.45).points >= 16 && p(7.45).points <= 19 && p(7.45).grade === 1);
+  assert.ok(p(9.0).grade === 3 && p(9.0).points >= 8 && p(9.0).points <= 11);
+  let prev = 21;
+  for (let v = 7.0; v <= 13; v += 0.01) { const x = p(v).points; assert.ok(x <= prev, 'monotonic ' + v); prev = x; }
+  const bf = T.BANDS['여'].flex['중1'];
+  const f = v => T.pointsFromBands(v, bf, 0.1, false);
+  assert.strictEqual(f(-0.1).points, 0); assert.strictEqual(f(28.0).points, 20);
+  assert.ok(f(9.0).grade === 3 && f(12.0).grade === 2 && f(1.0).grade === 5 && f(1.0).points >= 1);
+});
+test('BMI: 정상 20점, 과체중 2등급, 마름 3등급, 비만 4·5등급', () => {
+  const m1 = v => T.bmiPoints(v, '남', '중1');
+  assert.deepStrictEqual(m1(20.0), { points: 20, grade: 1, category: '정상' });
+  assert.strictEqual(m1(15.4).points, 20); assert.strictEqual(m1(23.2).points, 20);
+  const over = m1(24.0); assert.ok(over.grade === 2 && over.points >= 12 && over.points <= 15 && over.category === '과체중');
+  assert.ok(m1(23.3).points === 15 && m1(24.9).points === 12);
+  const thin = m1(15.0); assert.ok(thin.grade === 3 && thin.points >= 8 && thin.points <= 11);
+  assert.ok(m1(12.0).points === 8);
+  const mild = m1(27.0); assert.ok(mild.grade === 4 && mild.points >= 4 && mild.points <= 7);
+  assert.ok(m1(25.0).points === 7 && m1(29.9).points === 4);
+  const sev = m1(31.0); assert.ok(sev.grade === 5 && sev.points >= 1 && sev.points <= 3);
+  assert.strictEqual(m1(40).points, 0);
+  // 고2 남: 과체중 구분 없음 → 25.0~29.9 경도비만
+  assert.strictEqual(T.bmiPoints(26, '남', '고2').grade, 4);
+  assert.strictEqual(T.bmiPoints(20, '여', '중3').points, 20);
+});
+test('gradeFromTotal / hasTable / 표 무결성', () => {
+  assert.deepStrictEqual([100, 80, 79, 60, 59, 40, 39, 20, 19, 0].map(T.gradeFromTotal), [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
+  assert.ok(T.hasTable('남', '중1') && T.hasTable('여', '고3') && !T.hasTable('남', '중7') && !T.hasTable(null, '중1'));
+  for (const g of ['남', '여']) for (const item of Object.keys(T.BANDS[g])) for (const gk of Object.keys(T.BANDS[g][item])) {
+    const b = T.BANDS[g][item][gk];
+    assert.strictEqual(b.length, 5, `${g} ${item} ${gk}`);
+    const lower = T.ITEMS[item].lowerIsBetter;
+    for (let i = 0; i < 5; i++) assert.ok(b[i][0] <= b[i][1], `${g} ${item} ${gk} band ${i}`);
+    for (let i = 0; i < 4; i++) assert.ok(lower ? b[i + 1][1] <= b[i][0] : b[i][1] <= b[i + 1][0], `${g} ${item} ${gk} order ${i}`);
+  }
+});
 
 console.log('\n[scoring]');
 test('toNum: 문자열/쉼표/결측', () => {
@@ -45,58 +102,53 @@ test('toNum: 문자열/쉼표/결측', () => {
   assert.strictEqual(S.toNum(null), null);
   assert.strictEqual(S.toNum('-5'), -5);
 });
-test('sd/zScores: 기본·결측 유지·sd=0', () => {
-  approx(S.sd([1, 2, 3, 4]), Math.sqrt(5 / 3));
-  const z = S.zScores([1, null, 3]);
-  assert.strictEqual(z[1], null);
-  approx(z[0], -Math.SQRT1_2); approx(z[2], Math.SQRT1_2);
-  assert.deepStrictEqual(S.zScores([2, 2, 2]), [0, 0, 0]);
-});
-test('bmiScore: 정상범위 0, 밖이면 음수 거리', () => {
-  assert.strictEqual(S.bmiScore(170, 60), 0);          // 20.8
-  approx(S.bmiScore(160, 40), -(18.5 - 40 / 2.56));    // 15.6
-  approx(S.bmiScore(170, 80), -(80 / 2.89 - 23));      // 27.7
-  assert.strictEqual(S.bmiScore(null, 60), null);
+test('bmiValue: 0.01 단위 올림', () => {
+  approx(S.bmiValue(170, 60), 20.8);   // 20.76 → 20.8
+  approx(S.bmiValue(160, 47.36), 18.5); // 18.5 → 18.5
+  assert.strictEqual(S.bmiValue(null, 60), null);
 });
 test('papsItemValues: 1·2차 중 더 좋은 값, BMI 토글', () => {
   const iv = S.papsItemValues({ run: '30', flex1: '10', flex2: '12.5', situp: 40, jump1: '180', jump2: null, height: 170, weight: 60 });
-  assert.strictEqual(iv.flex, 12.5); assert.strictEqual(iv.jump, 180); assert.strictEqual(iv.bmi, 0);
+  assert.strictEqual(iv.flex, 12.5); assert.strictEqual(iv.jump, 180); approx(iv.bmi, 20.8);
   assert.strictEqual(S.papsItemValues({ run: 1 }, false).bmi, undefined);
+});
+test('computePapsPoints: 공식 기준표(중1 남) 5영역 합계', () => {
+  const st = [{ id: 'a', gender: '남', grade: 1, papsRaw: { run: 64, flex1: 10.0, flex2: 9.0, situp: 90, jump1: 211.1, jump2: 200, height: 170, weight: 60 } }];
+  const r = S.computePapsPoints(st, { schoolLevel: '중' });
+  const d = r.detail.a;
+  assert.strictEqual(d.source, 'official'); assert.strictEqual(d.gradeKey, '중1');
+  assert.strictEqual(d.items.run.points, 16); assert.strictEqual(d.items.flex.points, 16);
+  assert.strictEqual(d.items.situp.points, 16); assert.strictEqual(d.items.jump.points, 16); assert.strictEqual(d.items.bmi.points, 20);
+  assert.strictEqual(d.nAreas, 5); assert.strictEqual(d.scaled, false); assert.strictEqual(d.total, 84); assert.strictEqual(d.grade, 1);
+  const r2 = S.computePapsPoints(st, { schoolLevel: '중', includeBmi: false });
+  assert.strictEqual(r2.detail.a.nAreas, 4); assert.strictEqual(r2.detail.a.scaled, true); approx(r2.detail.a.total, 64 * 5 / 4);
+});
+test('computePapsPoints: 성별 없으면 학급 내 상대점수, 총점/등급 직접 입력', () => {
+  const st = makeStudents(10, 3, { noGender: true });
+  const r = S.computePapsPoints(st, {});
+  assert.strictEqual(r.detail.S1.source, 'relative');
+  assert.ok(r.byId.S1 >= 0 && r.byId.S1 <= 100);
+  const given = [{ id: 'g', papsGiven: 77 }, { id: 'h', papsGiven: 2 }];
+  assert.strictEqual(S.computePapsPoints(given, { papsGivenType: 'score' }).byId.g, 77);
+  assert.strictEqual(S.computePapsPoints(given, { papsGivenType: 'grade' }).byId.h, 70);
 });
 test('computeVirtues: 8문항 평균, 5개 미만 응답이면 null, 범위 밖 무시', () => {
   const items = new Array(32).fill(4);
-  const v = S.computeVirtues(items);
-  assert.deepStrictEqual(v, { 성실: 4, 협동: 4, 정의: 4, 배려: 4 });
+  assert.deepStrictEqual(S.computeVirtues(items), { 성실: 4, 협동: 4, 정의: 4, 배려: 4 });
   const items2 = items.slice(); items2[0] = null; items2[1] = null; items2[2] = null; items2[3] = 9;
   assert.strictEqual(S.computeVirtues(items2).성실, null);
-  items2[3] = 2; items2[2] = 2; // 성실: 2,2,4,4,4,4,4 → 6개 유효
+  items2[3] = 2; items2[2] = 2;
   approx(S.computeVirtues(items2).성실, (2 + 2 + 4 * 4) / 6);
 });
-test('computePapsZ: 성별 전원 있으면 성별 내 z (auto)', () => {
-  const st = makeStudents(10, 3);
-  const r1 = S.computePapsZ(st, { zByGender: 'auto' });
-  assert.deepStrictEqual(r1.groupKeys.sort(), ['남', '여']);
-  const r2 = S.computePapsZ(st, { zByGender: 'class' });
-  assert.deepStrictEqual(r2.groupKeys, ['all']);
-  // 성별 내 z 평균은 0
-  const males = st.filter(s => s.gender === '남').map(s => r1.byId[s.id]);
-  approx(S.mean(males), 0, 1e-9);
-});
-test('computePapsZ: 등급 입력은 부호 반전 (1등급이 최상)', () => {
-  const st = [{ id: 'a', papsGiven: 1 }, { id: 'b', papsGiven: 3 }, { id: 'c', papsGiven: 5 }];
-  const r = S.computePapsZ(st, { papsGivenType: 'grade' });
-  assert.ok(r.byId.a > r.byId.b && r.byId.b > r.byId.c);
-  const r2 = S.computePapsZ(st, { papsGivenType: 'score' });
-  assert.ok(r2.byId.a < r2.byId.c);
-});
-test('prepareStudents: 결측 대체 + 플래그', () => {
+test('prepareStudents: 점수·등급·결측 대체 플래그', () => {
   const st = makeStudents(6, 5);
   st[0].papsRaw = null; st[1].items = null;
-  const p = S.prepareStudents(st, {});
-  assert.strictEqual(p[0].papsImputed, true); assert.strictEqual(p[0].papsZ, 0);
+  const p = S.prepareStudents(st, { schoolLevel: '중' });
+  assert.strictEqual(p[0].papsImputed, true); assert.ok(typeof p[0].papsPoints === 'number');
   assert.strictEqual(p[1].virtueImputed, true);
-  assert.ok(typeof p[1].virtues.성실 === 'number');
-  assert.strictEqual(p[2].papsImputed, false); assert.strictEqual(p[2].virtueImputed, false);
+  assert.strictEqual(p[2].papsImputed, false); assert.strictEqual(p[2].papsDetail.source, 'official');
+  assert.ok(p[2].papsGrade >= 1 && p[2].papsGrade <= 5);
+  assert.ok(p.every(x => x.papsPoints >= 0 && x.papsPoints <= 100));
 });
 
 console.log('\n[algorithm]');
@@ -116,7 +168,7 @@ function check(result, students, K, opts) {
     }
   }
 }
-const base = S.prepareStudents(makeStudents(28, 11), {});
+const base = S.prepareStudents(makeStudents(28, 11), { schoolLevel: '중' });
 test('buildTeams: 28명 6팀, 크기·성별 균형, 재현성', () => {
   const r1 = A.buildTeams(base, { teamCount: 6, seed: 1 });
   check(r1, base, 6, { genderBalance: true });
@@ -125,10 +177,10 @@ test('buildTeams: 28명 6팀, 크기·성별 균형, 재현성', () => {
   const r3 = A.buildTeams(base, { teamCount: 6, seed: 2 });
   assert.notDeepStrictEqual(r1.teams, r3.teams, '다른 시드 → 다른 결과');
 });
-test('buildTeams: PAPS 범위가 허용편차 안이고, 랜덤 배치보다 인성 편차가 작다', () => {
-  const r = A.buildTeams(base, { teamCount: 6, seed: 7, papsTolerance: 0.3 });
-  assert.ok(r.stats.Dp <= 0.3 + 1e-9, 'Dp=' + r.stats.Dp);
-  // 랜덤 배치 100회 평균 Dc
+test('buildTeams: PAPS 팀 평균 범위가 허용편차(점) 안이고, 랜덤 배치보다 인성 편차가 작다', () => {
+  const r = A.buildTeams(base, { teamCount: 6, seed: 7, papsTolerance: 4 });
+  assert.ok(r.stats.Dp <= 4 + 1e-9, 'Dp=' + r.stats.Dp);
+  assert.ok(r.stats.metrics.PAPS.teamMeans.every(m => m >= 0 && m <= 100));
   const rr = rng(99); let sum = 0;
   for (let k = 0; k < 100; k++) {
     const ids = base.map(s => s.id);
@@ -198,63 +250,71 @@ test('성능: 30명 8팀 5회 재시작 < 2초', () => {
   console.log('       (' + ms + 'ms)');
 });
 
-if (P) {
-  console.log('\n[parse]');
-  test('헤더 탐지: NEIS 양식', () => {
-    const rows = [
-      ['학년도', '과정명', '계열명', '학년', '학과명', '반명', '반코드', '번호', '학생성명', '왕복오래달리기(회)', '앉아윗몸 앞으로 굽히기(cm) 1차', '앉아윗몸 앞으로 굽히기(cm) 2차', '윗몸말아올리기(회)', '제자리멀리뛰기(cm) 1차', '제자리멀리뛰기(cm) 2차', '신장(cm)', '체중(kg)'],
-      [2026, '주간', '일반계', '1', '일반학과', '1', '01', '1', '김가명', '26', '26', '25.5', 60, '160', '155', '150.4', '45'],
-      [2026, '주간', '일반계', '1', '일반학과', '1', '01', '2', '이가명', '37', '29', '29.5', 40, '165', '175', '164.3', '57']
-    ];
-    const det = P.detectTable(rows);
-    assert.strictEqual(det.headerRow, 0);
-    const m = det.mapping;
-    assert.strictEqual(m.no, 7); assert.strictEqual(m.name, 8);
-    assert.strictEqual(m.run, 9); assert.strictEqual(m.flex1, 10); assert.strictEqual(m.flex2, 11);
-    assert.strictEqual(m.situp, 12); assert.strictEqual(m.jump1, 13); assert.strictEqual(m.jump2, 14);
-    assert.strictEqual(m.height, 15); assert.strictEqual(m.weight, 16);
-    const recs = P.extractStudents(rows, det);
-    assert.strictEqual(recs.length, 2);
-    assert.strictEqual(recs[0].no, 1); assert.strictEqual(recs[0].name, '김가명');
-    assert.strictEqual(recs[1].papsRaw.flex2, 29.5);
-  });
-  test('헤더 탐지: 구글폼 32문항 (원문 헤더 + B문항 제외 + 성별)', () => {
-    const header = ['타임스탬프', '학급', '번호', '성별'].concat(Q.ITEMS.map((t, i) => (i + 1) + '. ' + t)).concat(Q.B_ITEMS.map((t, i) => 'B' + (i + 1) + '. ' + t));
-    const row = ['2026-10-10 9:00', '1-3', '5', '여'].concat(new Array(32).fill(4)).concat([3, 3, 3, 3, 3]);
-    const det = P.detectTable([header, row]);
-    assert.strictEqual(det.mapping.no, 2); assert.strictEqual(det.mapping.gender, 3);
-    assert.strictEqual(det.mapping.items.length, 32);
-    assert.strictEqual(det.mapping.items[0], 4); assert.strictEqual(det.mapping.items[31], 35);
-    const recs = P.extractStudents([header, row], det);
-    assert.strictEqual(recs[0].gender, '여'); assert.strictEqual(recs[0].items.length, 32);
-  });
-  test('헤더 탐지: 숫자 헤더 1~32, 4덕목 열, PAPS 총점 열', () => {
-    const header = ['번호', '이름'].concat(Array.from({ length: 32 }, (_, i) => String(i + 1)));
-    const det = P.detectTable([header, ['1', '가', ...new Array(32).fill(3)]]);
-    assert.strictEqual(det.mapping.items.length, 32);
-    const h2 = ['번호', '이름', '성실', '협동', '정의', '배려', 'PAPS 총점'];
-    const d2 = P.detectTable([h2, ['1', '가', 4, 3.5, 4.2, 3.9, 78]]);
-    assert.strictEqual(d2.mapping.v_성실, 2); assert.strictEqual(d2.mapping.v_배려, 5); assert.strictEqual(d2.mapping.papsGiven, 6);
-    const recs = P.extractStudents([h2, ['1', '가', 4, 3.5, 4.2, 3.9, 78]], d2);
-    assert.strictEqual(recs[0].virtuesGiven.협동, 3.5); assert.strictEqual(recs[0].papsGiven, 78);
-  });
-  test('붙여넣기 텍스트 → 표', () => {
-    const rows = P.parseDelimitedText('번호\t이름\t성별\n1\t김가명\t남\n2\t이가명\t여\n');
-    assert.strictEqual(rows.length, 3); assert.strictEqual(rows[1][1], '김가명');
-    const csv = P.parseDelimitedText('번호,이름,"비고, 쉼표"\n1,가,"a, b"');
-    assert.strictEqual(csv[1][2], 'a, b');
-  });
-  test('병합: 번호 기준, 한쪽만 있는 학생 표시', () => {
-    const paps = [{ no: 1, name: '가', papsRaw: { run: 1 } }, { no: 2, name: '나', papsRaw: { run: 2 } }];
-    const survey = [{ no: 2, name: '나', gender: '여', items: new Array(32).fill(3) }, { no: 3, name: '다', gender: '남', items: new Array(32).fill(4) }];
-    const merged = P.mergeStudents(paps, survey);
-    assert.strictEqual(merged.length, 3);
-    const byNo = {}; merged.forEach(s => byNo[s.no] = s);
-    assert.strictEqual(byNo[1].source.paps, true); assert.strictEqual(byNo[1].source.survey, false);
-    assert.strictEqual(byNo[2].source.paps, true); assert.strictEqual(byNo[2].source.survey, true); assert.strictEqual(byNo[2].gender, '여');
-    assert.strictEqual(byNo[3].source.paps, false); assert.strictEqual(byNo[3].papsRaw, null);
-  });
-}
+console.log('\n[parse]');
+test('헤더 탐지: NEIS 양식 (학년 포함)', () => {
+  const rows = [
+    ['학년도', '과정명', '계열명', '학년', '학과명', '반명', '반코드', '번호', '학생성명', '왕복오래달리기(회)', '앉아윗몸 앞으로 굽히기(cm) 1차', '앉아윗몸 앞으로 굽히기(cm) 2차', '윗몸말아올리기(회)', '제자리멀리뛰기(cm) 1차', '제자리멀리뛰기(cm) 2차', '신장(cm)', '체중(kg)'],
+    [2026, '주간', '일반계', '1', '일반학과', '1', '01', '1', '김가명', '26', '26', '25.5', 60, '160', '155', '150.4', '45'],
+    [2026, '주간', '일반계', '1', '일반학과', '1', '01', '2', '이가명', '37', '29', '29.5', 40, '165', '175', '164.3', '57']
+  ];
+  const det = P.detectTable(rows);
+  assert.strictEqual(det.headerRow, 0);
+  const m = det.mapping;
+  assert.strictEqual(m.no, 7); assert.strictEqual(m.name, 8); assert.strictEqual(m.grade, 3);
+  assert.strictEqual(m.run, 9); assert.strictEqual(m.flex1, 10); assert.strictEqual(m.flex2, 11);
+  assert.strictEqual(m.situp, 12); assert.strictEqual(m.jump1, 13); assert.strictEqual(m.jump2, 14);
+  assert.strictEqual(m.height, 15); assert.strictEqual(m.weight, 16);
+  const recs = P.extractStudents(rows, det);
+  assert.strictEqual(recs.length, 2);
+  assert.strictEqual(recs[0].no, 1); assert.strictEqual(recs[0].name, '김가명'); assert.strictEqual(recs[0].grade, 1);
+  assert.strictEqual(recs[1].papsRaw.flex2, 29.5);
+});
+test('헤더 탐지: 50m·악력·팔굽혀펴기 열', () => {
+  const h = ['번호', '이름', '성별', '50m달리기(초)', '악력(kg)', '팔굽혀펴기(회)'];
+  const det = P.detectTable([h, [1, '가', '남', 8.5, 30.2, 20]]);
+  assert.strictEqual(det.mapping.run50, 3); assert.strictEqual(det.mapping.grip, 4); assert.strictEqual(det.mapping.pushup, 5);
+  const recs = P.extractStudents([h, [1, '가', '남', 8.5, 30.2, 20]], det);
+  assert.strictEqual(recs[0].papsRaw.run50, 8.5); assert.strictEqual(recs[0].papsRaw.grip, 30.2); assert.strictEqual(recs[0].papsRaw.pushup, 20);
+  const r = S.computePapsPoints([Object.assign({ id: 'x', grade: 1 }, recs[0])], { schoolLevel: '중' });
+  assert.strictEqual(r.detail.x.nAreas, 2); assert.strictEqual(r.detail.x.areas['순발력'].key, 'run50');
+  assert.strictEqual(r.detail.x.areas['근력·근지구력'].key, 'pushup');
+});
+test('헤더 탐지: 구글폼 32문항 (원문 헤더 + B문항 제외 + 성별)', () => {
+  const header = ['타임스탬프', '학급', '번호', '성별'].concat(Q.ITEMS.map((t, i) => (i + 1) + '. ' + t)).concat(Q.B_ITEMS.map((t, i) => 'B' + (i + 1) + '. ' + t));
+  const row = ['2026-10-10 9:00', '1-3', '5', '여'].concat(new Array(32).fill(4)).concat([3, 3, 3, 3, 3]);
+  const det = P.detectTable([header, row]);
+  assert.strictEqual(det.mapping.no, 2); assert.strictEqual(det.mapping.gender, 3);
+  assert.strictEqual(det.mapping.items.length, 32);
+  assert.strictEqual(det.mapping.items[0], 4); assert.strictEqual(det.mapping.items[31], 35);
+  const recs = P.extractStudents([header, row], det);
+  assert.strictEqual(recs[0].gender, '여'); assert.strictEqual(recs[0].items.length, 32);
+});
+test('헤더 탐지: 숫자 헤더 1~32, 4덕목 열, PAPS 총점 열', () => {
+  const header = ['번호', '이름'].concat(Array.from({ length: 32 }, (_, i) => String(i + 1)));
+  const det = P.detectTable([header, ['1', '가', ...new Array(32).fill(3)]]);
+  assert.strictEqual(det.mapping.items.length, 32);
+  const h2 = ['번호', '이름', '성실', '협동', '정의', '배려', 'PAPS 총점'];
+  const d2 = P.detectTable([h2, ['1', '가', 4, 3.5, 4.2, 3.9, 78]]);
+  assert.strictEqual(d2.mapping.v_성실, 2); assert.strictEqual(d2.mapping.v_배려, 5); assert.strictEqual(d2.mapping.papsGiven, 6);
+  const recs = P.extractStudents([h2, ['1', '가', 4, 3.5, 4.2, 3.9, 78]], d2);
+  assert.strictEqual(recs[0].virtuesGiven.협동, 3.5); assert.strictEqual(recs[0].papsGiven, 78);
+});
+test('붙여넣기 텍스트 → 표', () => {
+  const rows = P.parseDelimitedText('번호\t이름\t성별\n1\t김가명\t남\n2\t이가명\t여\n');
+  assert.strictEqual(rows.length, 3); assert.strictEqual(rows[1][1], '김가명');
+  const csv = P.parseDelimitedText('번호,이름,"비고, 쉼표"\n1,가,"a, b"');
+  assert.strictEqual(csv[1][2], 'a, b');
+});
+test('병합: 번호 기준, 한쪽만 있는 학생 표시', () => {
+  const paps = [{ no: 1, name: '가', grade: 1, papsRaw: { run: 1 } }, { no: 2, name: '나', papsRaw: { run: 2 } }];
+  const survey = [{ no: 2, name: '나', gender: '여', items: new Array(32).fill(3) }, { no: 3, name: '다', gender: '남', items: new Array(32).fill(4) }];
+  const merged = P.mergeStudents(paps, survey);
+  assert.strictEqual(merged.length, 3);
+  const byNo = {}; merged.forEach(s => byNo[s.no] = s);
+  assert.strictEqual(byNo[1].source.paps, true); assert.strictEqual(byNo[1].source.survey, false); assert.strictEqual(byNo[1].grade, 1);
+  assert.strictEqual(byNo[2].source.paps, true); assert.strictEqual(byNo[2].source.survey, true); assert.strictEqual(byNo[2].gender, '여');
+  assert.strictEqual(byNo[3].source.paps, false); assert.strictEqual(byNo[3].papsRaw, null);
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

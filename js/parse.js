@@ -16,12 +16,16 @@
     { key: 'no', label: '번호', group: '기본' },
     { key: 'name', label: '이름', group: '기본' },
     { key: 'gender', label: '성별', group: '기본' },
+    { key: 'grade', label: '학년', group: '기본' },
     { key: 'run', label: '왕복오래달리기(회)', group: 'PAPS 원기록' },
     { key: 'flex1', label: '앉아윗몸앞으로굽히기 1차', group: 'PAPS 원기록' },
     { key: 'flex2', label: '앉아윗몸앞으로굽히기 2차', group: 'PAPS 원기록' },
     { key: 'situp', label: '윗몸말아올리기(회)', group: 'PAPS 원기록' },
+    { key: 'pushup', label: '팔굽혀펴기(회)', group: 'PAPS 원기록' },
+    { key: 'grip', label: '악력(kg)', group: 'PAPS 원기록' },
     { key: 'jump1', label: '제자리멀리뛰기 1차', group: 'PAPS 원기록' },
     { key: 'jump2', label: '제자리멀리뛰기 2차', group: 'PAPS 원기록' },
+    { key: 'run50', label: '50m달리기(초)', group: 'PAPS 원기록' },
     { key: 'height', label: '신장(cm)', group: 'PAPS 원기록' },
     { key: 'weight', label: '체중(kg)', group: 'PAPS 원기록' },
     { key: 'papsGiven', label: 'PAPS 총점/등급 (계산값)', group: 'PAPS 계산값' },
@@ -61,10 +65,14 @@
     if (n === '번호' || n === '학번' || n === '학생번호' || n === '출석번호' || n === 'no' || n === 'number') return { field: 'no' };
     if (n === '학생성명' || n === '성명' || n === '이름' || n === '학생명' || n === '학생이름' || n === 'name') return { field: 'name' };
     if (n === '성별' || n === 'gender' || n === 'sex') return { field: 'gender' };
-    /* PAPS 원기록 (순서 중요: 굽히기 → 윗몸) */
+    if (n === '학년' || n === 'grade') return { field: 'grade' };
+    /* PAPS 원기록 (순서 중요: 왕복 → 50m, 굽히기 → 윗몸) */
     if (n.indexOf('왕복') >= 0 || n.indexOf('오래달리기') >= 0 || n.indexOf('셔틀런') >= 0 || n.indexOf('페이서') >= 0) return { field: 'run' };
+    if (n.indexOf('50m') >= 0 || n.indexOf('50미터') >= 0) return { field: 'run50' };
     if (n.indexOf('굽히기') >= 0 || n.indexOf('유연') >= 0) return { field: /2차|2회|second/.test(n) ? 'flex2' : 'flex1', trial: /2차|2회/.test(n) ? 2 : (/1차|1회/.test(n) ? 1 : 0) };
     if (n.indexOf('말아올리기') >= 0 || n.indexOf('윗몸') >= 0 || n.indexOf('근지구력') >= 0) return { field: 'situp' };
+    if (n.indexOf('팔굽혀') >= 0) return { field: 'pushup' };
+    if (n.indexOf('악력') >= 0) return { field: 'grip' };
     if (n.indexOf('멀리뛰기') >= 0 || n.indexOf('순발력') >= 0) return { field: /2차|2회/.test(n) ? 'jump2' : 'jump1', trial: /2차|2회/.test(n) ? 2 : (/1차|1회/.test(n) ? 1 : 0) };
     if (n.indexOf('신장') >= 0 || n === '키' || n === '키cm' || n === 'height') return { field: 'height' };
     if (n.indexOf('체중') >= 0 || n.indexOf('몸무게') >= 0 || n === 'weight') return { field: 'weight' };
@@ -184,8 +192,10 @@
       var no = parseNo(cell(row, 'no'));
       var name = cellStr(cell(row, 'name')) || null;
       if (no === null && !name) continue;
-      var rec = { no: no, name: name, gender: parseGender(cell(row, 'gender')), papsRaw: null, papsGiven: null, items: null, virtuesGiven: null };
-      var rawKeys = ['run', 'flex1', 'flex2', 'situp', 'jump1', 'jump2', 'height', 'weight'];
+      var gradeVal = S.toNum(cell(row, 'grade'));
+      var rec = { no: no, name: name, gender: parseGender(cell(row, 'gender')), grade: (gradeVal !== null && gradeVal >= 1 && gradeVal <= 6) ? Math.round(gradeVal) : null,
+                  papsRaw: null, papsGiven: null, items: null, virtuesGiven: null };
+      var rawKeys = ['run', 'flex1', 'flex2', 'situp', 'pushup', 'grip', 'jump1', 'jump2', 'run50', 'height', 'weight'];
       var raw = {}, anyRaw = false;
       rawKeys.forEach(function (k) {
         var v = S.toNum(cell(row, k));
@@ -252,7 +262,7 @@
       var k = keyOf(rec);
       if (!k) return null;
       if (!map[k]) {
-        map[k] = { id: k, no: rec.no === undefined ? null : rec.no, name: rec.name || null, gender: null,
+        map[k] = { id: k, no: rec.no === undefined ? null : rec.no, name: rec.name || null, gender: null, grade: null,
           papsRaw: null, papsGiven: null, items: null, virtuesGiven: null, source: { paps: false, survey: false } };
         order.push(k);
       }
@@ -263,6 +273,7 @@
       s.source.paps = true;
       if (!s.name && r.name) s.name = r.name;
       if (r.gender && !s.gender) s.gender = r.gender;
+      if (r.grade && !s.grade) s.grade = r.grade;
       if (r.papsRaw) s.papsRaw = r.papsRaw;
       if (r.papsGiven !== null && r.papsGiven !== undefined) s.papsGiven = r.papsGiven;
       if (r.items) s.items = r.items;
@@ -273,6 +284,7 @@
       s.source.survey = true;
       if (!s.name && r.name) s.name = r.name;
       if (r.gender) s.gender = r.gender;
+      if (r.grade && !s.grade) s.grade = r.grade;
       if (r.items) s.items = r.items;
       if (r.virtuesGiven) s.virtuesGiven = r.virtuesGiven;
       if (r.papsRaw && !s.papsRaw) s.papsRaw = r.papsRaw;

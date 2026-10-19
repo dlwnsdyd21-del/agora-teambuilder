@@ -1,15 +1,18 @@
 /* ============================================================
  * scoring.js — 점수 계산 (순수 함수)
- *  - PAPS 원기록 5영역 → 그룹 내 z점수 평균 = papsZ
- *  - PAPS 총점/등급 직접 입력 → z점수
+ *  - PAPS 원기록 → 종목별 0~20점(공식 기준표, paps_table.js) → 5영역 합계 100점 만점
+ *    · 성별·학년 기준표가 없으면 학급 내 상대점수(백분위×20)로 대체하고 표시
+ *    · 일부 영역이 없으면 100점 만점으로 환산하고 표시
+ *  - PAPS 총점/등급 직접 입력 → 총점 그대로 / 등급은 대표 점수
  *  - 인성 32문항 → 4덕목 평균 (8문항 중 5개 이상 응답 시)
- *  - 결측 대체 (papsZ → 0, 덕목 → 학급 평균) + 플래그
+ *  - 결측 대체 (PAPS → 학급 평균, 덕목 → 학급 평균) + 플래그
  * PAPS와 인성은 절대 합산하지 않는다.
  * ============================================================ */
 (function (root) {
   'use strict';
 
   var Q = root.AgoraQuestions || (typeof require === 'function' ? require('./questions.js') : null);
+  var T = root.AgoraPapsTable || (typeof require === 'function' ? require('./paps_table.js') : null);
   var VIRTUE_KEYS = Q.VIRTUE_KEYS;
 
   /* ---------- 기본 통계 ---------- */
@@ -23,7 +26,6 @@
     var n = parseFloat(m[0]);
     return isFinite(n) ? n : null;
   }
-
   function mean(arr) {
     var s = 0, n = 0;
     for (var i = 0; i < arr.length; i++) {
@@ -33,7 +35,6 @@
     }
     return n ? s / n : null;
   }
-
   /* 표본 표준편차 (n-1). n<2 → 0 */
   function sd(arr) {
     var vals = [];
@@ -47,17 +48,13 @@
     for (var j = 0; j < vals.length; j++) ss += (vals[j] - m) * (vals[j] - m);
     return Math.sqrt(ss / (vals.length - 1));
   }
-
-  /* null은 null로 유지. sd=0이면 전원 0 */
   function zScores(arr) {
     var m = mean(arr), s = sd(arr);
     return arr.map(function (v) {
-      if (v === null || v === undefined || isNaN(v)) return null;
-      if (m === null) return null;
+      if (v === null || v === undefined || isNaN(v) || m === null) return null;
       return s > 0 ? (v - m) / s : 0;
     });
   }
-
   function best(a, b) {
     var x = toNum(a), y = toNum(b);
     if (x === null) return y;
@@ -66,111 +63,134 @@
   }
 
   /* ---------- PAPS ---------- */
-  var BMI_LOW = 18.5, BMI_HIGH = 23;
-
+  /* BMI = kg/m², 0.01 단위에서 올림하여 0.1 단위 기록 (공식 기록 규칙) */
   function bmiValue(height, weight) {
     var h = toNum(height), w = toNum(weight);
     if (h === null || w === null || h <= 0 || w <= 0) return null;
     var hm = h / 100;
-    return w / (hm * hm);
+    return Math.ceil(w / (hm * hm) * 10 - 1e-9) / 10;
   }
 
-  /* 정상범위 안이면 0, 밖이면 -(범위까지 거리). 클수록 좋음 */
-  function bmiScore(height, weight) {
-    var bmi = bmiValue(height, weight);
-    if (bmi === null) return null;
-    if (bmi < BMI_LOW) return -(BMI_LOW - bmi);
-    if (bmi > BMI_HIGH) return -(bmi - BMI_HIGH);
-    return 0;
-  }
+  var PAPS_ITEM_KEYS = ['run', 'flex', 'situp', 'pushup', 'grip', 'jump', 'run50', 'bmi'];
+  var PAPS_ITEM_LABELS = {};
+  PAPS_ITEM_KEYS.forEach(function (k) { PAPS_ITEM_LABELS[k] = T.ITEMS[k].label; });
+  var AREA_ITEMS = {
+    '심폐지구력': ['run'], '유연성': ['flex'], '근력·근지구력': ['situp', 'pushup', 'grip'],
+    '순발력': ['jump', 'run50'], '체지방': ['bmi']
+  };
+  var AREA_SHORT = { '심폐지구력': '심폐', '유연성': '유연', '근력·근지구력': '근력', '순발력': '순발', '체지방': '체지방' };
 
-  /* raw: {run, flex1, flex2, situp, jump1, jump2, height, weight} → 영역별 값 (클수록 좋음) */
+  /* raw: {run, flex1, flex2, situp, pushup, grip, jump1, jump2, run50, height, weight} → 종목별 값 */
   function papsItemValues(raw, includeBmi) {
     if (!raw) return {};
     var out = {
-      run: toNum(raw.run),
-      flex: best(raw.flex1, raw.flex2),
-      situp: toNum(raw.situp),
-      jump: best(raw.jump1, raw.jump2)
+      run: toNum(raw.run), flex: best(raw.flex1, raw.flex2), situp: toNum(raw.situp),
+      pushup: toNum(raw.pushup), grip: toNum(raw.grip), jump: best(raw.jump1, raw.jump2), run50: toNum(raw.run50)
     };
-    if (includeBmi !== false) out.bmi = bmiScore(raw.height, raw.weight);
+    if (includeBmi !== false) out.bmi = bmiValue(raw.height, raw.weight);
     return out;
   }
 
-  var PAPS_ITEM_KEYS = ['run', 'flex', 'situp', 'jump', 'bmi'];
-  var PAPS_ITEM_LABELS = {
-    run: '왕복오래달리기', flex: '앉아윗몸앞으로굽히기', situp: '윗몸말아올리기',
-    jump: '제자리멀리뛰기', bmi: '체질량지수(BMI)'
-  };
-
-  /* 학생들을 z 그룹으로 나눔. 'auto': 전원 성별 있으면 성별, 아니면 학급 */
-  function groupKeyFn(students, zByGender) {
-    var mode = zByGender || 'auto';
-    if (mode === 'class') return function () { return 'all'; };
-    if (mode === 'auto') {
-      var allHave = students.length > 0 && students.every(function (s) { return s.gender === '남' || s.gender === '여'; });
-      if (!allHave) return function () { return 'all'; };
-    }
-    return function (s) { return (s.gender === '남' || s.gender === '여') ? s.gender : 'all'; };
+  function gradeKeyFor(student, options) {
+    options = options || {};
+    var level = options.schoolLevel || '중';
+    var g = toNum(student.grade);
+    if (g === null || g < 1 || g > 6) g = toNum(options.defaultGrade) || 1;
+    return level + Math.round(g);
   }
 
+  /* 영역별로 사용 가능한 종목 하나를 골라 점수화 */
+  function areaPoints(values, pointFn) {
+    var areas = {}, items = {}, sum = 0, n = 0, missing = [];
+    Object.keys(AREA_ITEMS).forEach(function (area) {
+      var keys = AREA_ITEMS[area], chosen = null;
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i], v = values[k];
+        if (v === null || v === undefined) continue;
+        var r = pointFn(k, v);
+        if (!r) continue;
+        items[k] = { value: v, points: r.points, grade: r.grade, category: r.category || null };
+        if (!chosen) chosen = { key: k, points: r.points, grade: r.grade };
+      }
+      if (chosen) { areas[area] = chosen; sum += chosen.points; n++; }
+      else missing.push(area);
+    });
+    var total = n ? sum * 5 / n : null;
+    return { areas: areas, items: items, sum: sum, nAreas: n, total: total, scaled: n > 0 && n < 5, missing: missing };
+  }
+
+  /* 학급 내 상대점수: 종목별 백분위 × 20 (기준표가 없는 학생용) */
+  function relativePointFn(distributions) {
+    return function (k, v) {
+      var arr = distributions[k];
+      if (!arr || !arr.length) return null;
+      var lower = T.ITEMS[k] && T.ITEMS[k].lowerIsBetter;
+      var less = 0, eq = 0;
+      for (var i = 0; i < arr.length; i++) {
+        if (arr[i] === v) eq++;
+        else if (lower ? arr[i] > v : arr[i] < v) less++;
+      }
+      var pct = (less + 0.5 * eq) / arr.length;
+      var pts = Math.round(pct * 20);
+      var grade = pts >= 16 ? 1 : pts >= 12 ? 2 : pts >= 8 ? 3 : pts >= 4 ? 4 : 5;
+      return { points: pts, grade: grade };
+    };
+  }
+
+  var GRADE_REP_POINTS = { 1: 90, 2: 70, 3: 50, 4: 30, 5: 10 };
+
   /*
-   * students: [{id, gender, papsRaw|null, papsGiven|null}]
-   * options: {includeBmi, zByGender, papsGivenType: 'score'|'grade'}
-   * 반환: { byId: {id: z|null}, detail: {id: {items:{run:z,...}, used:[keys], group, source}} }
+   * students: [{id, gender, grade, papsRaw|null, papsGiven|null}]
+   * options: {includeBmi, schoolLevel, defaultGrade, papsGivenType:'score'|'grade'}
+   * 반환 { byId: {id: 총점|null}, detail: {id: {...}} }
    */
-  function computePapsZ(students, options) {
+  function computePapsPoints(students, options) {
     options = options || {};
     var includeBmi = options.includeBmi !== false;
-    var keyOf = groupKeyFn(students, options.zByGender);
-    var groups = {};
+    var valuesById = {}, dist = {};
     students.forEach(function (s) {
-      var k = keyOf(s);
-      (groups[k] = groups[k] || []).push(s);
+      var v = papsItemValues(s.papsRaw, includeBmi);
+      valuesById[s.id] = v;
+      PAPS_ITEM_KEYS.forEach(function (k) {
+        if (v[k] !== null && v[k] !== undefined) (dist[k] = dist[k] || []).push(v[k]);
+      });
     });
-
+    var relFn = relativePointFn(dist);
     var byId = {}, detail = {};
-    Object.keys(groups).forEach(function (gk) {
-      var list = groups[gk];
-      /* (1) 직접 입력값 (총점 또는 등급) */
-      var givenVals = list.map(function (s) {
-        var g = toNum(s.papsGiven);
-        if (g === null) return null;
-        return options.papsGivenType === 'grade' ? -g : g;
-      });
-      var givenZ = zScores(givenVals);
-      /* (2) 원기록 */
-      var itemVals = {};
-      PAPS_ITEM_KEYS.forEach(function (k) { itemVals[k] = []; });
-      list.forEach(function (s) {
-        var iv = papsItemValues(s.papsRaw, includeBmi);
-        PAPS_ITEM_KEYS.forEach(function (k) { itemVals[k].push(iv[k] === undefined ? null : iv[k]); });
-      });
-      var itemZ = {};
-      PAPS_ITEM_KEYS.forEach(function (k) { itemZ[k] = zScores(itemVals[k]); });
-
-      list.forEach(function (s, i) {
-        var d = { items: {}, used: [], group: gk, source: null };
-        if (givenZ[i] !== null && givenZ[i] !== undefined) {
-          byId[s.id] = givenZ[i];
-          d.source = 'given';
-        } else {
-          var zs = [];
-          PAPS_ITEM_KEYS.forEach(function (k) {
-            var z = itemZ[k][i];
-            if (z !== null && z !== undefined) { zs.push(z); d.items[k] = z; d.used.push(k); }
-          });
-          byId[s.id] = zs.length ? mean(zs) : null;
-          d.source = zs.length ? 'raw' : null;
+    students.forEach(function (s) {
+      var d = { source: null, gradeKey: null, gender: s.gender || null, areas: {}, items: {}, nAreas: 0, scaled: false, missing: [], total: null };
+      var given = toNum(s.papsGiven);
+      if (given !== null) {
+        if (options.papsGivenType === 'grade') {
+          var g = Math.max(1, Math.min(5, Math.round(given)));
+          d.total = GRADE_REP_POINTS[g]; d.source = 'grade';
+        } else { d.total = Math.max(0, Math.min(100, given)); d.source = 'given'; }
+      } else {
+        var values = valuesById[s.id];
+        var any = PAPS_ITEM_KEYS.some(function (k) { return values[k] !== null && values[k] !== undefined; });
+        if (any) {
+          var gk = gradeKeyFor(s, options);
+          d.gradeKey = gk;
+          var gender = (s.gender === '남' || s.gender === '여') ? s.gender : null;
+          var r;
+          if (gender && T.hasTable(gender, gk)) {
+            r = areaPoints(values, function (k, v) { return T.itemPoints(k, v, gender, gk); });
+            d.source = 'official';
+          } else {
+            r = areaPoints(values, relFn);
+            d.source = 'relative';
+          }
+          d.areas = r.areas; d.items = r.items; d.nAreas = r.nAreas; d.scaled = r.scaled; d.missing = r.missing; d.total = r.total;
         }
-        detail[s.id] = d;
-      });
+      }
+      d.grade = T.gradeFromTotal(d.total);
+      byId[s.id] = d.total;
+      detail[s.id] = d;
     });
-    return { byId: byId, detail: detail, groupKeys: Object.keys(groups) };
+    return { byId: byId, detail: detail };
   }
 
   /* ---------- 인성 ---------- */
-  /* items: 길이 32 배열 (1~5 또는 null). 반환 {성실:number|null, ...} */
   function computeVirtues(items) {
     var out = {};
     var minN = Q.MIN_ANSWERED_PER_VIRTUE;
@@ -184,8 +204,6 @@
     });
     return out;
   }
-
-  /* given: {성실, 협동, 정의, 배려} → 검증된 객체 또는 null */
   function virtuesFromGiven(given) {
     var out = {}, any = false;
     VIRTUE_KEYS.forEach(function (k) {
@@ -196,36 +214,34 @@
   }
 
   /* ---------- 전체 준비 (UI → 알고리즘 입력) ---------- */
-  /*
-   * students: 세션 학생 배열 [{id, no, name, gender, papsRaw, papsGiven, items, virtuesGiven}]
-   * options: {includeBmi, zByGender, papsGivenType}
-   * 각 학생에 papsZ, papsDetail, virtues, papsImputed, virtueImputed 를 채운 새 배열 반환
-   */
   function prepareStudents(students, options) {
     options = options || {};
-    var paps = computePapsZ(students, options);
+    var paps = computePapsPoints(students, options);
     var prepared = students.map(function (s) {
       var virt = null;
       if (s.items && s.items.length) virt = computeVirtues(s.items);
       if (!virt || VIRTUE_KEYS.every(function (k) { return virt[k] === null; })) {
         virt = virtuesFromGiven(s.virtuesGiven) || { 성실: null, 협동: null, 정의: null, 배려: null };
       }
-      var z = paps.byId[s.id];
+      var p = paps.byId[s.id];
       return Object.assign({}, s, {
-        papsZ: (z === undefined ? null : z),
+        papsPoints: (p === undefined ? null : p),
         papsDetail: paps.detail[s.id] || null,
         virtues: virt
       });
     });
     /* 결측 대체 */
+    var pMean = mean(prepared.map(function (s) { return s.papsPoints; }));
+    if (pMean === null) pMean = 50;
     var vMeans = {};
     VIRTUE_KEYS.forEach(function (k) {
       var m = mean(prepared.map(function (s) { return s.virtues[k]; }));
       vMeans[k] = m === null ? 3 : m;
     });
     prepared.forEach(function (s) {
-      s.papsImputed = (s.papsZ === null);
-      if (s.papsImputed) s.papsZ = 0;
+      s.papsImputed = (s.papsPoints === null);
+      if (s.papsImputed) s.papsPoints = pMean;
+      s.papsGrade = T.gradeFromTotal(s.papsPoints);
       s.virtueImputed = false;
       VIRTUE_KEYS.forEach(function (k) {
         if (s.virtues[k] === null) { s.virtues[k] = vMeans[k]; s.virtueImputed = true; }
@@ -235,11 +251,10 @@
   }
 
   var api = {
-    toNum: toNum, mean: mean, sd: sd, zScores: zScores,
-    bmiScore: bmiScore, bmiValue: bmiValue, papsItemValues: papsItemValues,
-    PAPS_ITEM_KEYS: PAPS_ITEM_KEYS, PAPS_ITEM_LABELS: PAPS_ITEM_LABELS,
-    computePapsZ: computePapsZ, computeVirtues: computeVirtues, virtuesFromGiven: virtuesFromGiven,
-    prepareStudents: prepareStudents
+    toNum: toNum, mean: mean, sd: sd, zScores: zScores, bmiValue: bmiValue, papsItemValues: papsItemValues,
+    PAPS_ITEM_KEYS: PAPS_ITEM_KEYS, PAPS_ITEM_LABELS: PAPS_ITEM_LABELS, AREA_ITEMS: AREA_ITEMS, AREA_SHORT: AREA_SHORT,
+    gradeKeyFor: gradeKeyFor, computePapsPoints: computePapsPoints,
+    computeVirtues: computeVirtues, virtuesFromGiven: virtuesFromGiven, prepareStudents: prepareStudents
   };
   root.AgoraScoring = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

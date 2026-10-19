@@ -8,8 +8,8 @@
   var SAVED_KEY = 'agora.teambuilder.saved.v1';
 
   var DEFAULT_OPTIONS = {
-    teamCount: 6, genderBalance: true, papsTolerance: 0.3, includeBmi: true,
-    zByGender: 'auto', papsGivenType: 'score', seed: 1, together: [], apart: [], pinned: {}
+    teamCount: 6, genderBalance: true, papsTolerance: 4, includeBmi: true,
+    schoolLevel: '중', defaultGrade: 1, papsGivenType: 'score', seed: 1, together: [], apart: [], pinned: {}
   };
 
   function newSession() {
@@ -31,6 +31,8 @@
     if (!obj || typeof obj !== 'object') return s;
     Object.keys(s).forEach(function (k) { if (obj[k] !== undefined) s[k] = obj[k]; });
     s.options = Object.assign({}, DEFAULT_OPTIONS, obj.options || {});
+    /* 구버전(z점수 단위 허용편차) 세션 이전 */
+    if (typeof s.options.papsTolerance !== 'number' || s.options.papsTolerance < 1) s.options.papsTolerance = DEFAULT_OPTIONS.papsTolerance;
     if (!Array.isArray(s.students)) s.students = [];
     if (!s.imports) s.imports = { paps: null, survey: null };
     return s;

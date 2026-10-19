@@ -61,7 +61,7 @@
 
     /* 3) 균형표 (팀 단위 통계) */
     if (stats) {
-      var bal = [['팀', '인원', '남', '여', 'PAPS 평균(z)'].concat(VK.map(function (k) { return k + ' 평균'; }))];
+      var bal = [['팀', '인원', '남', '여', 'PAPS 평균(100점 만점)'].concat(VK.map(function (k) { return k + ' 평균(5점 만점)'; }))];
       stats.teams.forEach(function (tm, t) {
         bal.push([teamName(t), tm.size, tm.male, tm.female, r2(tm.meanPaps)].concat(VK.map(function (k) { return r2(tm.meanVirtues[k]); })));
       });
@@ -72,20 +72,26 @@
       bal.push([]);
       bal.push(['공정성 점수', stats.equity]);
       bal.push(['편성 시드', session.result ? session.result.seed : '']);
-      bal.push(['PAPS 허용편차(τ)', session.options.papsTolerance]);
+      bal.push(['PAPS 허용편차(점)', session.options.papsTolerance]);
+      bal.push(['PAPS 점수 기준', root.AgoraPapsTable ? root.AgoraPapsTable.SOURCE : '']);
       bal.push(['성별 균형', session.options.genderBalance ? '켬' : '끔']);
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(bal), '균형표');
     }
 
     /* 4) 교사용 개인 점수 (선택) */
     if (opts.includeScores) {
-      var sc = [['팀', '번호', '이름', '성별', 'PAPS z', 'PAPS 대체'].concat(VK).concat(['인성 대체', 'PAPS 자료', '설문 자료'])];
+      var itemKeys = ['run', 'flex', 'situp', 'pushup', 'grip', 'jump', 'run50', 'bmi'];
+      var T = root.AgoraPapsTable;
+      var sc = [['팀', '번호', '이름', '성별', 'PAPS 총점', 'PAPS 등급', 'PAPS 산출'].concat(itemKeys.map(function (k) { return T.ITEMS[k].label + ' 점수'; })).concat(VK).concat(['PAPS 대체', '인성 대체', 'PAPS 자료', '설문 자료'])];
       teams.forEach(function (ids, t) {
         ids.forEach(function (id) {
           var s = byId[id]; if (!s) return;
-          sc.push([teamName(t), s.no === null ? '' : s.no, s.name || '', s.gender || '', r2(s.papsZ), s.papsImputed ? 'Y' : '']
+          var d = s.papsDetail || {};
+          var srcLabel = { official: '공식 기준표', relative: '학급 내 상대', given: '총점 입력', grade: '등급 입력' }[d.source] || '';
+          sc.push([teamName(t), s.no === null ? '' : s.no, s.name || '', s.gender || '', r2(s.papsPoints), s.papsGrade || '', srcLabel + (d.scaled ? '(환산)' : '')]
+            .concat(itemKeys.map(function (k) { return d.items && d.items[k] ? d.items[k].points : ''; }))
             .concat(VK.map(function (k) { return r2(s.virtues[k]); }))
-            .concat([s.virtueImputed ? 'Y' : '', s.source && s.source.paps ? 'Y' : '', s.source && s.source.survey ? 'Y' : '']));
+            .concat([s.papsImputed ? 'Y' : '', s.virtueImputed ? 'Y' : '', s.source && s.source.paps ? 'Y' : '', s.source && s.source.survey ? 'Y' : '']));
         });
       });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sc), '교사용 개인점수');

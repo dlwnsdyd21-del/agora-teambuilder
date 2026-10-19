@@ -5,7 +5,7 @@
   'use strict';
 
   var Q = root.AgoraQuestions, S = root.AgoraScoring, A = root.AgoraAlgorithm,
-      P = root.AgoraParse, St = root.AgoraState, X = root.AgoraExport;
+      P = root.AgoraParse, St = root.AgoraState, X = root.AgoraExport, T = root.AgoraPapsTable;
   var VK = Q.VIRTUE_KEYS;
   var TEAM_COLORS = ['#1f6feb', '#e4572e', '#17a398', '#f0a202', '#8e44ad', '#2e86de', '#d35400', '#27ae60', '#c2185b', '#607d8b', '#00897b', '#6d4c41'];
 
@@ -293,15 +293,23 @@
         h('option', { value: '', text: '–', selected: !st.gender }), h('option', { value: '남', text: '남', selected: st.gender === '남' }), h('option', { value: '여', text: '여', selected: st.gender === '여' }))));
       /* PAPS */
       var papsTd = h('td', { class: 'num' });
+      var d = p.papsDetail;
       if (st.papsRaw) {
-        var used = p.papsDetail && p.papsDetail.used ? p.papsDetail.used.map(function (k) { return S.PAPS_ITEM_LABELS[k] + ' ' + fz(p.papsDetail.items[k]); }).join('\n') : '';
-        papsTd.appendChild(h('span', { title: '원기록 영역별 z\n' + used + '\n(그룹: ' + (p.papsDetail ? p.papsDetail.group : '') + ')' }, fz(p.papsZ)));
-        papsTd.appendChild(h('span', { class: 'badge', text: '원기록' }));
+        var lines = d && d.items ? Object.keys(d.items).map(function (k) {
+          var it = d.items[k];
+          return T.ITEMS[k].label + ' ' + it.value + T.ITEMS[k].unitLabel + ' → ' + it.points + '점 (' + it.grade + '등급' + (it.category ? ' · ' + it.category : '') + ')';
+        }).join('\n') : '';
+        var srcText = d && d.source === 'official' ? '공식 기준표 (' + d.gradeKey + ' ' + d.gender + ')' : (d && d.source === 'relative' ? '학급 내 상대점수 (성별 또는 학년 기준표 없음)' : '');
+        var scaledText = d && d.scaled ? '\n※ ' + d.nAreas + '개 영역만 있어 100점 만점으로 환산 (없음: ' + d.missing.join(', ') + ')' : '';
+        papsTd.appendChild(h('span', { title: srcText + '\n' + lines + scaledText }, fmt(p.papsPoints, 1) + '점'));
+        papsTd.appendChild(h('span', { class: 'badge', text: p.papsGrade + '등급' }));
+        if (d && d.source === 'relative') papsTd.appendChild(h('span', { class: 'badge warn', text: '상대', title: '성별(또는 학년) 기준표가 없어 학급 내 백분위로 매긴 점수입니다. 성별을 입력하면 공식 점수로 바뀝니다.' }));
+        if (d && d.scaled) papsTd.appendChild(h('span', { class: 'badge warn', text: '환산', title: '일부 영역 기록이 없어 100점 만점으로 환산했습니다' }));
       } else {
         papsTd.appendChild(h('input', { type: 'number', step: 'any', 'data-field': 'papsGiven', value: st.papsGiven === null || st.papsGiven === undefined ? '' : st.papsGiven, placeholder: s.options.papsGivenType === 'grade' ? '등급' : '총점', style: 'max-width:5.5em' }));
-        papsTd.appendChild(h('span', { class: 'hint', text: ' z ' + fz(p.papsZ) }));
+        if (!p.papsImputed) papsTd.appendChild(h('span', { class: 'hint', text: ' → ' + fmt(p.papsPoints, 0) + '점' }));
       }
-      if (p.papsImputed) papsTd.appendChild(h('span', { class: 'badge warn', text: '대체', title: 'PAPS 자료가 없어 학급 평균(0)으로 채웠습니다' }));
+      if (p.papsImputed) papsTd.appendChild(h('span', { class: 'badge warn', text: '대체', title: 'PAPS 자료가 없어 학급 평균 점수로 채웠습니다' }));
       tr.appendChild(papsTd);
       /* 덕목 */
       VK.forEach(function (k) {
@@ -327,7 +335,8 @@
     var u = s.students.length - m - f;
     var hasP = prep.filter(function (p) { return !p.papsImputed; }).length;
     var hasV = prep.filter(function (p) { return !p.virtueImputed && (p.items || p.virtuesGiven); }).length;
-    $('#roster-summary').textContent = s.students.length ? ('총 ' + s.students.length + '명 · 남 ' + m + ' 여 ' + f + (u ? ' 미상 ' + u : '') + ' · PAPS ' + hasP + '명 · 인성 ' + hasV + '명') : '';
+    var rel = prep.filter(function (p) { return p.papsDetail && p.papsDetail.source === 'relative'; }).length;
+    $('#roster-summary').textContent = s.students.length ? ('총 ' + s.students.length + '명 · 남 ' + m + ' 여 ' + f + (u ? ' 미상 ' + u : '') + ' · PAPS ' + hasP + '명' + (rel ? ' (상대점수 ' + rel + '명)' : '') + ' · 인성 ' + hasV + '명') : '';
   }
 
   function bindRosterEvents() {
@@ -382,9 +391,10 @@
     setIfIdle($('#opt-teamCount'), o.teamCount);
     setIfIdle($('#opt-genderBalance'), o.genderBalance, 'checked');
     setIfIdle($('#opt-papsTolerance'), o.papsTolerance);
-    $('#tau-value').textContent = Number(o.papsTolerance).toFixed(2);
+    $('#tau-value').textContent = Number(o.papsTolerance).toFixed(1);
     setIfIdle($('#opt-includeBmi'), o.includeBmi, 'checked');
-    setIfIdle($('#opt-zByGender'), o.zByGender);
+    setIfIdle($('#opt-schoolLevel'), o.schoolLevel || '중');
+    setIfIdle($('#opt-defaultGrade'), o.defaultGrade || 1);
     setIfIdle($('#opt-papsGivenType'), o.papsGivenType);
     setIfIdle($('#opt-seed'), o.seed);
     var N = s.students.length, K = Math.max(1, o.teamCount | 0);
@@ -400,10 +410,11 @@
     }
     $('#opt-teamCount').addEventListener('change', upd('teamCount', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : Math.min(20, v); }));
     $('#opt-genderBalance').addEventListener('change', upd('genderBalance', function (el) { return el.checked; }));
-    $('#opt-papsTolerance').addEventListener('input', function (e) { $('#tau-value').textContent = Number(e.target.value).toFixed(2); });
+    $('#opt-papsTolerance').addEventListener('input', function (e) { $('#tau-value').textContent = Number(e.target.value).toFixed(1); });
     $('#opt-papsTolerance').addEventListener('change', upd('papsTolerance', function (el) { return parseFloat(el.value); }));
     $('#opt-includeBmi').addEventListener('change', upd('includeBmi', function (el) { return el.checked; }));
-    $('#opt-zByGender').addEventListener('change', upd('zByGender'));
+    $('#opt-schoolLevel').addEventListener('change', upd('schoolLevel'));
+    $('#opt-defaultGrade').addEventListener('change', upd('defaultGrade', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : Math.min(6, v); }));
     $('#opt-papsGivenType').addEventListener('change', upd('papsGivenType'));
     $('#opt-seed').addEventListener('change', upd('seed', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : v; }));
     $('#btn-build').addEventListener('click', function () { build(); });
@@ -527,9 +538,9 @@
     summary.appendChild(h('div', { class: 'kv' },
       h('div', null, '팀 ', h('b', { text: teams.length }), '개 · 학생 ', h('b', { text: prep.length }), '명',
         s.manualEdits ? h('span', { class: 'badge warn', text: '수동 조정됨' }) : h('span', { class: 'badge ok', text: '시드 ' + s.result.seed })),
-      h('div', { class: 'teacher-only' }, 'PAPS 팀 평균 범위 ', h('b', { text: fmt(stats.Dp, 2) }), ' z (허용 ' + Number(o.papsTolerance).toFixed(2) + ')',
+      h('div', { class: 'teacher-only' }, 'PAPS 팀 평균 범위 ', h('b', { text: fmt(stats.Dp, 1) }), '점 (허용 ' + Number(o.papsTolerance).toFixed(1) + '점, 100점 만점)',
         ' · 인성 편차 지수 ', h('b', { text: fmt(stats.Dc, 2) }), h('span', { class: 'hint', text: ' (4덕목 팀 평균 SD ÷ 학생 SD 합, 작을수록 균등)' })),
-      h('div', null, '성별 균형 ' + (o.genderBalance ? '켬' : '끔') + ' · 팀 평균 PAPS·4덕목이 서로 비슷할수록 공정한 편성입니다.')
+      h('div', null, '성별 균형 ' + (o.genderBalance ? '켬' : '끔') + ' · 팀 평균 PAPS 점수·4덕목이 서로 비슷할수록 공정한 편성입니다.')
     ));
     (s.result.log || []).forEach(function (m) { log.appendChild(h('div', { class: 'log', text: m })); });
 
@@ -547,7 +558,7 @@
         h('div', { class: 'team-head', style: 'background:' + teamColor(t) },
           h('h3', { text: teamName(t) }), h('span', { class: 'meta', text: tm.size + '명 · 남 ' + tm.male + ' 여 ' + tm.female + (tm.unknown ? ' ?' + tm.unknown : '') })),
         h('div', { class: 'team-stats' },
-          h('span', null, 'PAPS ', h('b', { text: fz(tm.meanPaps) })),
+          h('span', null, 'PAPS ', h('b', { text: fmt(tm.meanPaps, 1) + '점' })),
           VK.map(function (k) { return h('span', null, k + ' ', h('b', { text: fmt(tm.meanVirtues[k], 2) })); })),
         h('ul', { class: 'members' }, ids.map(function (id) { return memberEl(byId[id], s, t); }))
       );
@@ -571,15 +582,15 @@
     /* 균형표 */
     bal.className = 'balance';
     var table = h('table');
-    table.appendChild(h('thead', null, h('tr', null, h('th', { text: '팀' }), h('th', { text: '인원' }), h('th', { text: '남' }), h('th', { text: '여' }), h('th', { text: 'PAPS 평균(z)' }), VK.map(function (k) { return h('th', { text: k }); }))));
+    table.appendChild(h('thead', null, h('tr', null, h('th', { text: '팀' }), h('th', { text: '인원' }), h('th', { text: '남' }), h('th', { text: '여' }), h('th', { text: 'PAPS 평균(점/100)' }), VK.map(function (k) { return h('th', { text: k + '(/5)' }); }))));
     var tb = h('tbody');
     stats.teams.forEach(function (tm, t) {
       tb.appendChild(h('tr', null, h('td', { class: 'tn' }, h('i', { class: 'dot', style: 'background:' + teamColor(t) }), teamName(t)), h('td', { text: tm.size }), h('td', { text: tm.male }), h('td', { text: tm.female }),
-        h('td', { text: fz(tm.meanPaps) }), VK.map(function (k) { return h('td', { text: fmt(tm.meanVirtues[k], 2) }); })));
+        h('td', { text: fmt(tm.meanPaps, 1) }), VK.map(function (k) { return h('td', { text: fmt(tm.meanVirtues[k], 2) }); })));
     });
-    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '범위(최대−최소)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.range, 2) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].range, 2) }); })));
-    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '팀 평균 표준편차' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.sd, 2) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].sd, 2) }); })));
-    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '학생 표준편차(참고)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.studentSd, 2) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].studentSd, 2) }); })));
+    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '범위(최대−최소)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.range, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].range, 2) }); })));
+    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '팀 평균 표준편차' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.sd, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].sd, 2) }); })));
+    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '학생 표준편차(참고)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.studentSd, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].studentSd, 2) }); })));
     table.appendChild(tb);
     bal.appendChild(h('h3', { text: '팀 균형표' }));
     bal.appendChild(table);
@@ -593,12 +604,12 @@
     if (!p) return null;
     var pinned = s.options.pinned && s.options.pinned[p.id] !== undefined;
     var el = h('li', { class: 'member' + (selectedMember === p.id ? ' selected' : ''), dataset: { id: p.id }, draggable: !s.studentView,
-      title: s.studentView ? '' : 'PAPS z ' + fz(p.papsZ) + (p.papsImputed ? '(대체)' : '') + '\n' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 2); }).join(' · ') + (p.virtueImputed ? '\n(인성 일부 대체)' : '') },
+      title: s.studentView ? '' : 'PAPS ' + fmt(p.papsPoints, 1) + '점 (' + p.papsGrade + '등급)' + (p.papsImputed ? ' (대체)' : '') + '\n' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 2); }).join(' · ') + (p.virtueImputed ? '\n(인성 일부 대체)' : '') },
       h('span', { class: 'no', text: p.no === null || p.no === undefined ? '' : p.no }),
       h('span', { class: 'nm', text: p.name || '(이름 없음)' }),
       p.gender ? h('span', { class: 'g ' + (p.gender === '남' ? 'm' : 'f'), text: p.gender }) : null,
       pinned ? h('span', { class: 'pin', title: '팀 고정', text: '📌' }) : null,
-      h('span', { class: 'sc', text: 'z' + fz(p.papsZ) + ' · ' + VK.map(function (k) { return fmt(p.virtues[k], 1); }).join('/') })
+      h('span', { class: 'sc', text: fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return fmt(p.virtues[k], 1); }).join('/') })
     );
     if (!s.studentView) {
       el.addEventListener('dragstart', function (e) { e.dataTransfer.setData('text/plain', p.id); e.dataTransfer.effectAllowed = 'move'; selectedMember = null; });
@@ -631,21 +642,21 @@
       var half = Math.max((m.studentSd || 0) * 0.5, maxDev * 1.15, 0.05);
       var x0 = labelW, x1 = W - right;
       var xOf = function (v) { return x0 + (v - center + half) / (2 * half) * (x1 - x0); };
-      root_.appendChild(svg('text', { x: 8, y: y + 4, 'font-size': 13, 'font-weight': 600, fill: '#1b2430' }, mk === 'PAPS' ? 'PAPS(z)' : mk));
+      root_.appendChild(svg('text', { x: 8, y: y + 4, 'font-size': 13, 'font-weight': 600, fill: '#1b2430' }, mk === 'PAPS' ? 'PAPS(점)' : mk));
       root_.appendChild(svg('line', { x1: x0, x2: x1, y1: y, y2: y, stroke: '#dde3ec', 'stroke-width': 2 }));
       [-half, 0, half].forEach(function (d) {
         var x = xOf(center + d);
         root_.appendChild(svg('line', { x1: x, x2: x, y1: y - 6, y2: y + 6, stroke: '#c5cedb' }));
-        root_.appendChild(svg('text', { x: x, y: y + 18, 'font-size': 9, fill: '#8a97a8', 'text-anchor': 'middle' }, (center + d).toFixed(2)));
+        root_.appendChild(svg('text', { x: x, y: y + 18, 'font-size': 9, fill: '#8a97a8', 'text-anchor': 'middle' }, (center + d).toFixed(mk === 'PAPS' ? 1 : 2)));
       });
       var lo = Math.min.apply(null, tm), hi = Math.max.apply(null, tm);
       root_.appendChild(svg('rect', { x: xOf(lo), y: y - 9, width: Math.max(2, xOf(hi) - xOf(lo)), height: 18, rx: 4, fill: '#1f6feb', 'fill-opacity': 0.08 }));
       tm.forEach(function (v, t) {
         var c = svg('circle', { cx: xOf(v), cy: y, r: 6.5, fill: teamColor(t), stroke: '#fff', 'stroke-width': 1.5 });
-        c.appendChild(svg('title', null, teamName(t) + ' ' + mk + ' 평균 ' + v.toFixed(2)));
+        c.appendChild(svg('title', null, teamName(t) + ' ' + mk + ' 평균 ' + v.toFixed(mk === 'PAPS' ? 1 : 2)));
         root_.appendChild(c);
       });
-      root_.appendChild(svg('text', { x: W - 6, y: y + 4, 'font-size': 11, fill: '#5d6b7c', 'text-anchor': 'end' }, '범위 ' + m.range.toFixed(2)));
+      root_.appendChild(svg('text', { x: W - 6, y: y + 4, 'font-size': 11, fill: '#5d6b7c', 'text-anchor': 'end' }, '범위 ' + m.range.toFixed(mk === 'PAPS' ? 1 : 2)));
     });
     var box = h('div', { class: 'chart' }, h('h4', { text: '지표별 팀 평균 분포 (점이 모여 있을수록 균등)' }), root_,
       h('div', { class: 'legend' }, stats.teams.map(function (_, t) { return h('span', null, h('i', { style: 'background:' + teamColor(t) }), teamName(t)); })));

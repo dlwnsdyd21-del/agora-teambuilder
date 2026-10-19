@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1f6feb">
   <title>PAPS + 인성 AI 팀빌딩</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🏐%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css?v=1">
+  <link rel="stylesheet" href="css/style.css?v=2">
 </head>
 <body>
   <header class="topbar">
@@ -80,8 +80,8 @@
       <details class="help">
         <summary>어떤 형식을 읽을 수 있나요?</summary>
         <ul>
-          <li><b>PAPS 원기록</b>: NEIS "학급별일괄입력" 양식(왕복오래달리기·앉아윗몸앞으로굽히기 1/2차·윗몸말아올리기·제자리멀리뛰기 1/2차·신장·체중). 영역별로 학급(또는 성별) 안에서 표준점수(z)를 내고 평균한 값을 PAPS 종합으로 씁니다.</li>
-          <li><b>PAPS 계산값</b>: 번호·이름과 "PAPS 총점" 또는 "PAPS 등급" 한 열.</li>
+          <li><b>PAPS 원기록</b>: NEIS "학급별일괄입력" 양식(왕복오래달리기·앉아윗몸앞으로굽히기 1/2차·윗몸말아올리기·제자리멀리뛰기 1/2차·신장·체중). 팔굽혀펴기·악력·50m달리기 열도 읽습니다. 공식 기준표(학교건강검사규칙 별표 4, 2025.3.10 개정)로 종목당 0~20점, 5영역 합계 100점으로 계산합니다.</li>
+          <li><b>PAPS 계산값</b>: 번호·이름과 "PAPS 총점"(100점 만점) 또는 "PAPS 등급"(1~5) 한 열.</li>
           <li><b>인성 32문항</b>: 헤더가 1~32 번호이거나 문항 원문(구글폼)이면 자동 인식. B1~B5 보조문항은 자동 제외. 성실(1–8)·협동(9–16)·정의(17–24)·배려(25–32) 평균을 씁니다.</li>
           <li><b>인성 4덕목</b>: 성실·협동·정의·배려 열(1~5점).</li>
           <li>성별 열(남/여)이 있으면 함께 읽습니다. 빈 양식은 5번 내보내기에서 받을 수 있습니다.</li>
@@ -98,7 +98,7 @@
           <button id="btn-add-row" class="btn ghost" type="button">+ 학생 추가</button>
         </div>
       </div>
-      <p class="desc">PAPS 종합은 표준점수(z, 0이 학급 평균)입니다. 자료가 없는 칸은 <span class="badge warn">대체</span>로 표시되고 학급 평균으로 채워 편성에 포함됩니다. 원기록이 없는 학생은 PAPS 총점/등급을, 32문항이 없는 학생은 4덕목 점수를 직접 입력할 수 있습니다.</p>
+      <p class="desc">PAPS 점수는 공식 기준표(학교건강검사규칙 별표 4·5)로 종목당 0~20점을 매겨 5영역 합계 <b>100점 만점</b>으로 계산합니다(성별·학년 필요). 성별이 없으면 학급 내 상대점수(<span class="badge warn">상대</span>)로, 자료가 없으면 학급 평균(<span class="badge warn">대체</span>)으로 채워 편성에 포함합니다. 원기록이 없는 학생은 PAPS 총점/등급을, 32문항이 없는 학생은 4덕목 점수를 직접 입력할 수 있습니다. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다.</p>
       <div class="table-wrap">
         <table class="roster" id="roster-table">
           <thead>
@@ -118,17 +118,20 @@
           <span class="hint" id="team-size-hint"></span>
         </label>
         <label class="check"><input type="checkbox" id="opt-genderBalance"> 성별 균형 <span class="hint">각 팀 남·여 수 차이 1명 이하</span></label>
-        <label>PAPS 허용편차(τ)
-          <input type="range" id="opt-papsTolerance" min="0.1" max="1" step="0.05">
-          <span class="hint"><b id="tau-value"></b> z · 팀 평균 PAPS의 최대-최소 범위를 이 안에 유지하고, 그 안에서 인성 편차를 최소화</span>
+        <label>PAPS 허용편차
+          <input type="range" id="opt-papsTolerance" min="1" max="15" step="0.5">
+          <span class="hint"><b id="tau-value"></b>점 (100점 만점) · 팀 평균 PAPS 점수의 최대-최소 범위를 이 안에 유지하고, 그 안에서 인성 편차를 최소화</span>
         </label>
-        <label class="check"><input type="checkbox" id="opt-includeBmi"> PAPS 종합에 BMI(체질량) 포함 <span class="hint">공식 PAPS 5영역과 동일</span></label>
-        <label>PAPS 표준화 기준
-          <select id="opt-zByGender">
-            <option value="auto">자동 (전원 성별이 있으면 성별 내)</option>
-            <option value="class">학급 전체</option>
-            <option value="gender">성별 내</option>
-          </select>
+        <label class="check"><input type="checkbox" id="opt-includeBmi"> PAPS 점수에 체지방(BMI) 영역 포함 <span class="hint">끄면 4영역을 100점 만점으로 환산</span></label>
+        <label>학교급 · 학년 <span class="hint">PAPS 기준표 선택 (파일에 학년 열이 있으면 학생별로 적용)</span>
+          <span class="row">
+            <select id="opt-schoolLevel">
+              <option value="초">초등학교</option>
+              <option value="중">중학교</option>
+              <option value="고">고등학교</option>
+            </select>
+            <input type="number" id="opt-defaultGrade" min="1" max="6" step="1" style="max-width:5em"> 학년
+          </span>
         </label>
         <label>PAPS 직접입력 값 종류
           <select id="opt-papsGivenType">
@@ -210,13 +213,14 @@
 
   <script src="vendor/xlsx.full.min.js"></script>
   <script>if (!window.XLSX) { document.write('<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"><\/script>'); }</script>
-  <script src="js/questions.js?v=1"></script>
-  <script src="js/scoring.js?v=1"></script>
-  <script src="js/algorithm.js?v=1"></script>
-  <script src="js/parse.js?v=1"></script>
-  <script src="js/state.js?v=1"></script>
-  <script src="js/export.js?v=1"></script>
-  <script src="js/ui.js?v=1"></script>
-  <script src="js/app.js?v=1"></script>
+  <script src="js/questions.js?v=2"></script>
+  <script src="js/paps_table.js?v=2"></script>
+  <script src="js/scoring.js?v=2"></script>
+  <script src="js/algorithm.js?v=2"></script>
+  <script src="js/parse.js?v=2"></script>
+  <script src="js/state.js?v=2"></script>
+  <script src="js/export.js?v=2"></script>
+  <script src="js/ui.js?v=2"></script>
+  <script src="js/app.js?v=2"></script>
 </body>
 </html>

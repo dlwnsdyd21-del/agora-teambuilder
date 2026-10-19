@@ -52,12 +52,15 @@
         var x = s.virtues ? s.virtues[k] : null;
         v[k] = (typeof x === 'number' && !isNaN(x)) ? x : vMeans[k];
       });
-      return {
-        id: s.id, idx: idx, name: s.name,
-        g: gKey(s.gender),
-        p: (typeof s.papsZ === 'number' && !isNaN(s.papsZ)) ? s.papsZ : 0,
-        v: v
-      };
+      var p = (typeof s.papsPoints === 'number' && !isNaN(s.papsPoints)) ? s.papsPoints
+        : (typeof s.papsZ === 'number' && !isNaN(s.papsZ)) ? s.papsZ : null;
+      return { id: s.id, idx: idx, name: s.name, g: gKey(s.gender), p: p, v: v };
+    }).map(function (s, _, arr) {
+      if (s.p === null) {
+        var ps = arr.map(function (x) { return x.p; }).filter(function (x) { return x !== null; });
+        s.p = ps.length ? mean(ps) : 0;
+      }
+      return s;
     });
   }
 
@@ -134,8 +137,9 @@
     });
     return { Dp: Dp, Dc: Dc, ratios: ratios, teamMeansP: pm, teamMeansV: vm };
   }
+  /* Dp는 점수 단위(0~100)이므로 1000·초과분으로 강한 제약, 0.01·Dp로 약한 선호 */
   function objective(sp, tau) {
-    return 1000 * Math.max(0, sp.Dp - tau) + sp.Dc + 0.05 * sp.Dp;
+    return 1000 * Math.max(0, sp.Dp - tau) + sp.Dc + 0.01 * sp.Dp;
   }
 
   /* ---------- 제약 ---------- */
@@ -408,7 +412,9 @@
       var tm = sp.teamMeansV[k];
       metrics[k] = { teamMeans: tm, range: Math.max.apply(null, tm) - Math.min.apply(null, tm), sd: sdSample(tm), studentSd: studentSd[k], ratio: sp.ratios[k] };
     });
-    var equity = Math.round(100 * (1 - 0.5 * Math.min(1, sp.Dp / 1.0) - 0.5 * Math.min(1, sp.Dc / 2.0)));
+    /* PAPS 범위는 학생 표준편차 대비(척도 무관), 인성은 4덕목 비율 합 기준 */
+    var pRel = studentSd.PAPS > 1e-9 ? sp.Dp / studentSd.PAPS : 0;
+    var equity = Math.round(100 * (1 - 0.5 * Math.min(1, pRel) - 0.5 * Math.min(1, sp.Dc / 2.0)));
     return { teams: teams, metrics: metrics, Dp: sp.Dp, Dc: sp.Dc, equity: Math.max(0, Math.min(100, equity)) };
   }
 
@@ -419,10 +425,11 @@
   }
 
   /* ---------- 공개 API ---------- */
-  var DEFAULTS = { teamCount: 6, genderBalance: true, papsTolerance: 0.3, seed: 1, restarts: 5, maxEvals: 20000, together: [], apart: [], pinned: {} };
+  /* papsTolerance: 팀 평균 PAPS 총점(100점 만점)의 최대-최소 허용 범위(점) */
+  var DEFAULTS = { teamCount: 6, genderBalance: true, papsTolerance: 4, seed: 1, restarts: 5, maxEvals: 20000, together: [], apart: [], pinned: {} };
 
   /*
-   * students: [{id, name, gender, papsZ, virtues:{성실,협동,정의,배려}}]
+   * students: [{id, name, gender, papsPoints(0~100), virtues:{성실,협동,정의,배려}}]
    * 반환: { teams:[[ids]], stats, equity, seed, log, meta }
    */
   function buildTeams(inputStudents, options) {
