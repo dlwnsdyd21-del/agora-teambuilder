@@ -100,7 +100,9 @@ button, input { font: inherit; }
 .card.disabled { opacity: .4; cursor: not-allowed; filter: grayscale(.6); }
 .card.disabled:hover { transform: none; }
 .card .top { display: flex; align-items: center; gap: .6rem; }
-.avatar { width: 2.6rem; height: 2.6rem; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #0b1220; flex: none; font-size: 1.05rem; }
+.avatar { width: 3rem; height: 3rem; display: grid; place-items: center; flex: none; }
+.jersey { width: 100%; height: 100%; display: block; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .35)); }
+.card:hover .jersey { transform: rotate(-4deg) scale(1.06); transition: transform .15s; }
 .card .who { min-width: 0; }
 .card .nm { font-weight: 800; font-size: 1.08rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .meta { font-size: .78rem; color: var(--muted); display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
@@ -135,7 +137,8 @@ button, input { font: inherit; }
 .budget .bar i { display: block; height: 100%; background: var(--gold); transition: width .4s ease; }
 .members { list-style: none; margin: 0; padding: .45rem .55rem .6rem; display: flex; flex-direction: column; gap: .3rem; flex: 1; }
 .member { display: flex; align-items: center; gap: .45rem; padding: .35rem .5rem; border-radius: 10px; background: rgba(255, 255, 255, .07); animation: popIn .45s cubic-bezier(.2, .9, .3, 1.3) backwards; font-size: .9rem; }
-.member .mini { width: 1.6rem; height: 1.6rem; border-radius: 50%; display: grid; place-items: center; font-size: .72rem; font-weight: 800; color: #0b1220; flex: none; }
+.member .mini { width: 1.75rem; height: 1.75rem; display: grid; place-items: center; flex: none; }
+.member .mini .jersey { filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .4)); }
 .member .nm { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .member .tg { margin-left: auto; font-size: .78rem; color: var(--muted); white-space: nowrap; }
 .member.slot { background: transparent; border: 1px dashed var(--line); color: rgba(255, 255, 255, .25); justify-content: center; font-size: .8rem; animation: none; }
@@ -158,7 +161,7 @@ button, input { font: inherit; }
 .confetti i { position: absolute; top: -10px; width: 10px; height: 16px; border-radius: 2px; animation: fall linear forwards; }
 
 /* 익명 → 이름 공개 */
-.member.reveal, .card.reveal .nm { animation: flipIn .7s cubic-bezier(.2, .8, .2, 1) both; }
+.member.unmask, .card.unmask .nm { animation: flipIn .7s cubic-bezier(.2, .8, .2, 1) both; }
 .anon-badge { font-size: .72rem; padding: .1rem .45rem; border-radius: 999px; background: rgba(251, 191, 36, .18); color: var(--gold); font-weight: 700; margin-left: .3rem; }
 @keyframes flipIn { from { opacity: 0; transform: rotateX(90deg); } 60% { transform: rotateX(-12deg); } to { opacity: 1; transform: none; } }
 

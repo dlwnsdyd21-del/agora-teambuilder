@@ -35,6 +35,23 @@
     return el;
   }
   function clear(el) { while (el && el.firstChild) el.removeChild(el.firstChild); return el; }
+  function svgEl(tag, attrs) {
+    var el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) { if (attrs[k] !== null && attrs[k] !== undefined) el.setAttribute(k, attrs[k]); });
+    for (var i = 2; i < arguments.length; i++) append(el, arguments[i]);
+    return el;
+  }
+  /* 유니폼(저지) 아이콘: 몸판 색 + 등번호 */
+  function jersey(text, color, cls) {
+    var s = String(text === null || text === undefined ? '' : text);
+    var fs = s.length >= 3 ? 20 : s.length === 2 ? 25 : 28;
+    var dark = 'rgba(0,0,0,.28)';
+    return svgEl('svg', { class: 'jersey ' + (cls || ''), viewBox: '0 0 64 64', 'aria-hidden': 'true' },
+      svgEl('path', { d: 'M21 5 L29 9 Q32 14 35 9 L43 5 L60 13 L55 27 L48 24 L48 58 Q48 60 46 60 L18 60 Q16 60 16 58 L16 24 L9 27 L4 13 Z', fill: color, stroke: dark, 'stroke-width': 2, 'stroke-linejoin': 'round' }),
+      svgEl('path', { d: 'M29 9 Q32 14 35 9 Q32 18 29 9 Z', fill: dark }),
+      svgEl('path', { d: 'M4 13 L9 27 L16 24 L16 19 Z M60 13 L55 27 L48 24 L48 19 Z', fill: 'rgba(255,255,255,.18)' }),
+      svgEl('text', { x: 32, y: 44, 'text-anchor': 'middle', 'font-size': fs, 'font-weight': 800, fill: '#fff', 'font-family': 'Pretendard, Noto Sans KR, system-ui, sans-serif', stroke: 'rgba(0,0,0,.25)', 'stroke-width': 1.2, 'paint-order': 'stroke' }, s));
+  }
   var toastTimer = null;
   function toast(msg, isError) {
     var el = $('#d-toast');
@@ -196,9 +213,9 @@
   function card(id, opts) {
     opts = opts || {};
     var p = byId[id], pr = prof[id];
-    var el = h('div', { class: 'card' + (opts.disabled ? ' disabled' : '') + (opts.forced ? ' forced' : '') + (ui.revealAnim ? ' reveal' : ''), dataset: { id: id }, style: 'animation-delay:' + ((opts.index || 0) * 45) + 'ms' });
+    var el = h('div', { class: 'card' + (opts.disabled ? ' disabled' : '') + (opts.forced ? ' forced' : '') + (ui.revealAnim ? ' unmask' : ''), dataset: { id: id }, style: 'animation-delay:' + ((opts.index || 0) * 45) + 'ms' });
     el.appendChild(h('div', { class: 'top' },
-      h('div', { class: 'avatar', style: 'background:' + (p.gender === '여' ? '#fda4af' : p.gender === '남' ? '#93c5fd' : '#cbd5e1'), text: avatarText(p) }),
+      h('div', { class: 'avatar' }, jersey(avatarText(p), p.gender === '여' ? '#f0637f' : p.gender === '남' ? '#3b82f6' : '#64748b')),
       h('div', { class: 'who' }, h('div', { class: 'nm', text: labelOf(p) }),
         h('div', { class: 'meta' }, p.gender ? h('span', { class: 'g ' + (p.gender === '남' ? 'm' : 'f'), text: p.gender }) : null, stars(pr.stars)))));
     el.appendChild(h('div', { class: 'type', text: pr.icon + ' ' + pr.type }));
@@ -276,8 +293,8 @@
         var p = byId[id], pr = prof[id];
         if (!p) return;
         var isNew = lastPick && lastPick.id === id;
-        ul.appendChild(h('li', { class: 'member' + (isNew ? ' new' : '') + (ui.revealAnim ? ' reveal' : ''), style: 'animation-delay:' + (ui.revealAnim ? (t * 120 + i * 90) : (isNew ? 0 : i * 40)) + 'ms', title: ui.detail ? ('PAPS ' + fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' ')) : '' },
-          h('span', { class: 'mini', style: 'background:' + color(t), text: avatarText(p) }),
+        ul.appendChild(h('li', { class: 'member' + (isNew ? ' new' : '') + (ui.revealAnim ? ' unmask' : ''), style: 'animation-delay:' + (ui.revealAnim ? (t * 120 + i * 90) : (isNew ? 0 : i * 40)) + 'ms', title: ui.detail ? ('PAPS ' + fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' ')) : '' },
+          h('span', { class: 'mini' }, jersey(avatarText(p), color(t), 'small')),
           h('span', { class: 'nm', text: labelOf(p) }),
           h('span', { class: 'tg', text: pr.icon + (draft.mode === 'credit' ? ' 💎' + draft.costs[id] : '') })));
       });
