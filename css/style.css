@@ -55,8 +55,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .steps a { text-decoration: none; color: var(--muted); background: var(--card); border: 1px solid var(--line); padding: .3rem .7rem; border-radius: 999px; font-size: .88rem; }
 .steps a b { display: inline-block; width: 1.3em; height: 1.3em; line-height: 1.3em; text-align: center; border-radius: 50%; background: var(--accent); color: #fff; font-size: .8em; margin-right: .3em; }
 
-main { max-width: 1240px; margin: 0 auto; padding: .4rem 1.2rem 3rem; display: grid; gap: 1rem; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.2rem; box-shadow: var(--shadow); }
+main { max-width: 1240px; margin: 0 auto; padding: .4rem 1.2rem 3rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.2rem; box-shadow: var(--shadow); min-width: 0; }
+/* 긴 파일명·헤더 문자열이 화면 폭을 넘기지 않도록 */
+.card, .topbar, .steps { overflow-wrap: anywhere; }
+.import-grid > *, .settings-grid > *, .cons-grid > *, .export-grid > *, .teams-grid > *, .charts > * { min-width: 0; }
 .sec-head { display: flex; justify-content: space-between; align-items: center; gap: .8rem; flex-wrap: wrap; margin-bottom: .4rem; }
 footer { max-width: 1240px; margin: 0 auto; padding: 0 1.2rem 2rem; color: var(--muted); font-size: .8rem; }
 
@@ -227,11 +230,41 @@ body.student-view main { padding-top: 1rem; }
 @media (max-width: 1100px) {
   .topbar { position: static; }
 }
+/* ---------- 휴대폰: 폭 맞춤 + 가독성 ---------- */
 @media (max-width: 640px) {
-  .topbar { padding: .6rem .8rem; }
-  .brand .logo-img { height: 36px; }
+  html { font-size: 17px; }
+  body { line-height: 1.55; }
+  h2 { font-size: 1.3rem; }
+  h3 { font-size: 1.1rem; }
+  .topbar { padding: .7rem .9rem; gap: .6rem; }
+  .brand { gap: .6rem; }
+  .brand .logo-img { height: 40px; }
+  .brand .brand-text { padding-left: .6rem; }
+  .brand h1 { font-size: 1.15rem; }
   .brand .sub { display: none; }
-  main { padding: .4rem .8rem 2rem; }
-  .card { padding: .9rem .8rem; }
+  .topbar-actions { width: 100%; }
+  .topbar-actions .inline input { font-size: 1rem; padding: .35rem .5rem; }
+  .switch { font-size: 1rem; padding: .4rem .8rem; }
+  .steps { padding: .6rem .9rem; gap: .5rem; }
+  .steps a { font-size: .98rem; padding: .45rem .85rem; }
+  main { padding: .4rem .9rem 2rem; gap: .9rem; }
+  .card { padding: 1rem .9rem; }
+  .desc, .hint { font-size: .95rem; }
+  .btn { padding: .6rem 1.05rem; font-size: 1rem; border-radius: 10px; }
+  .btn.small { padding: .3rem .6rem; font-size: .9rem; }
   .import-grid { grid-template-columns: 1fr; }
+  .import-panel { padding: .9rem .8rem; }
+  .import-panel h3 .hint { display: block; margin-top: .15rem; font-size: .88rem; }
+  .dropzone { padding: 1rem .8rem; }
+  .dropzone p { font-size: 1rem; }
+  .dropzone .row { flex-wrap: wrap; }
+  table.roster { font-size: .95rem; }
+  table.roster th, table.roster td { padding: .4rem .5rem; }
+  .badge { font-size: .8rem; }
+  .settings-grid label { font-size: 1rem; }
+  .teams-grid { grid-template-columns: 1fr; }
+  .member { font-size: 1rem; padding: .45rem .6rem; }
+  .team-head h3 { font-size: 1.1rem; }
+  .equity .score { font-size: 2rem; }
+  .export-grid { grid-template-columns: 1fr; }
 }
