@@ -87,7 +87,7 @@
         ids.forEach(function (id) {
           var s = byId[id]; if (!s) return;
           var d = s.papsDetail || {};
-          var srcLabel = { official: '공식 기준표', relative: '학급 내 상대', given: '총점 입력', grade: '등급 입력' }[d.source] || '';
+          var srcLabel = { neis: '나이스 점수', official: '공식 기준표', relative: '학급 내 상대', given: '총점 입력', grade: '등급 입력' }[d.source] || '';
           sc.push([teamName(t), s.no === null ? '' : s.no, s.name || '', s.gender || '', r2(s.papsPoints), s.papsGrade || '', srcLabel + (d.scaled ? '(환산)' : '')]
             .concat(itemKeys.map(function (k) { return d.items && d.items[k] ? d.items[k].points : ''; }))
             .concat(VK.map(function (k) { return r2(s.virtues[k]); }))

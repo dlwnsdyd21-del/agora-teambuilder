@@ -184,15 +184,34 @@
     var sheet = pd.sheets[pd.sheetIndex];
     var det = pd.det;
     det.mapping.itemCount = det.mapping.items.filter(function (c) { return c >= 0; }).length;
-    if (det.mapping.no === undefined && det.mapping.name === undefined) { toast('번호 또는 이름 열을 지정해 주세요.', true); return; }
+    if (det.mapping.no === undefined && det.mapping.name === undefined && det.mapping.hakbun === undefined) { toast('번호, 학번 또는 이름 열을 지정해 주세요.', true); return; }
     var recs = P.extractStudents(sheet.rows, det);
     if (!recs.length) { toast('학생 행을 찾지 못했습니다. 헤더 행과 번호/이름 열을 확인하세요.', true); return; }
     var hasData = recs.some(function (r) { return r.papsRaw || r.papsGiven !== null || r.items || r.virtuesGiven; });
     if (!hasData) { toast('점수 열(PAPS 원기록/총점 또는 32문항/4덕목)을 지정해 주세요.', true); return; }
-    applyImport(kind, recs, { fileName: pd.fileName, sheetName: sheet.name, papsGivenType: det.mapping.papsGivenType });
+    applyImport(kind, recs, { fileName: pd.fileName, sheetName: sheet.name, papsGivenType: det.mapping.papsGivenType, neis: det.meta && det.meta.neis });
     pending[kind] = null;
     clear($('#map-' + kind));
-    toast(recs.length + '명의 자료를 적용했습니다.');
+    var msg = recs.length + '명의 자료를 적용했습니다.';
+    if (det.meta && det.meta.neis) {
+      var s = St.get();
+      var inf = S.inferFromNeis(s.students, s.options);
+      if (inf.inferred) {
+        var applied = 0;
+        St.update(function (ss) {
+          ss.students.forEach(function (st) {
+            var r = inf.byId[st.id];
+            if (r && !st.gender) { st.gender = r.gender; st.genderInferred = true; applied++; }
+          });
+          if (inf.gradeKey && inf.gradeKeyShare >= 0.8) {
+            ss.options.schoolLevel = inf.gradeKey.charAt(0);
+            ss.options.defaultGrade = parseInt(inf.gradeKey.slice(1), 10) || ss.options.defaultGrade;
+          }
+        }, { noUndo: true });
+        msg += ' 나이스 점수로 기준표를 대조해 ' + (inf.gradeKeyShare >= 0.8 ? inf.gradeKey + ' 기준표, ' : '') + '성별 ' + applied + '명(남 ' + inf.counts['남'] + ' 여 ' + inf.counts['여'] + ')을 추정했습니다. 명단에서 확인하세요.';
+      }
+    }
+    toast(msg);
   }
 
   function applyImport(kind, recs, meta) {
@@ -210,11 +229,13 @@
         }
         if (!st.source) st.source = { paps: false, survey: false };
         if (!st.name && r.name) st.name = r.name;
-        if (r.gender) st.gender = r.gender;
+        if (r.gender) { st.gender = r.gender; st.genderInferred = false; }
+        if (r.grade && !st.grade) st.grade = r.grade;
         if (kind === 'paps') {
           st.source.paps = true;
           if (r.papsRaw) st.papsRaw = r.papsRaw;
           if (r.papsGiven !== null && r.papsGiven !== undefined) st.papsGiven = r.papsGiven;
+          st.papsNeis = r.papsNeis || null;
           if (r.items && !st.items) st.items = r.items;
           if (r.virtuesGiven && !st.virtuesGiven) st.virtuesGiven = r.virtuesGiven;
         } else {
@@ -223,6 +244,7 @@
           if (r.virtuesGiven) st.virtuesGiven = r.virtuesGiven;
           if (r.papsRaw && !st.papsRaw) st.papsRaw = r.papsRaw;
           if (r.papsGiven !== null && r.papsGiven !== undefined && st.papsGiven === null) st.papsGiven = r.papsGiven;
+          if (r.papsNeis && !st.papsNeis) st.papsNeis = r.papsNeis;
         }
       });
       sortStudents(s.students);
@@ -289,8 +311,9 @@
       var tr = h('tr', { dataset: { id: st.id } });
       tr.appendChild(h('td', null, h('input', { type: 'number', min: 1, 'data-field': 'no', value: st.no === null || st.no === undefined ? '' : st.no })));
       tr.appendChild(h('td', null, h('input', { type: 'text', 'data-field': 'name', value: st.name || '', placeholder: '이름' })));
-      tr.appendChild(h('td', null, h('select', { 'data-field': 'gender' },
-        h('option', { value: '', text: '–', selected: !st.gender }), h('option', { value: '남', text: '남', selected: st.gender === '남' }), h('option', { value: '여', text: '여', selected: st.gender === '여' }))));
+      tr.appendChild(h('td', null, h('select', { 'data-field': 'gender', title: st.genderInferred ? '나이스 점수와 기준표를 대조해 추정한 성별입니다. 틀리면 고쳐 주세요.' : '' },
+        h('option', { value: '', text: '–', selected: !st.gender }), h('option', { value: '남', text: '남', selected: st.gender === '남' }), h('option', { value: '여', text: '여', selected: st.gender === '여' })),
+        st.gender && st.genderInferred ? h('span', { class: 'badge', text: '추정', title: '나이스 점수와 기준표를 대조해 추정한 성별' }) : null));
       /* PAPS */
       var papsTd = h('td', { class: 'num' });
       var d = p.papsDetail;
@@ -299,10 +322,12 @@
           var it = d.items[k];
           return T.ITEMS[k].label + ' ' + it.value + T.ITEMS[k].unitLabel + ' → ' + it.points + '점 (' + it.grade + '등급' + (it.category ? ' · ' + it.category : '') + ')';
         }).join('\n') : '';
-        var srcText = d && d.source === 'official' ? '공식 기준표 (' + d.gradeKey + ' ' + d.gender + ')' : (d && d.source === 'relative' ? '학급 내 상대점수 (성별 또는 학년 기준표 없음)' : '');
+        var srcText = d && d.source === 'neis' ? '나이스 조회 양식의 영역별 점수를 그대로 사용'
+          : d && d.source === 'official' ? '공식 기준표 (' + d.gradeKey + ' ' + d.gender + ')' : (d && d.source === 'relative' ? '학급 내 상대점수 (성별 또는 학년 기준표 없음)' : '');
         var scaledText = d && d.scaled ? '\n※ ' + d.nAreas + '개 영역만 있어 100점 만점으로 환산 (없음: ' + d.missing.join(', ') + ')' : '';
         papsTd.appendChild(h('span', { title: srcText + '\n' + lines + scaledText }, fmt(p.papsPoints, 1) + '점'));
         papsTd.appendChild(h('span', { class: 'badge', text: p.papsGrade + '등급' }));
+        if (d && d.source === 'neis') papsTd.appendChild(h('span', { class: 'badge ok', text: '나이스', title: '나이스가 계산한 점수' }));
         if (d && d.source === 'relative') papsTd.appendChild(h('span', { class: 'badge warn', text: '상대', title: '성별(또는 학년) 기준표가 없어 학급 내 백분위로 매긴 점수입니다. 성별을 입력하면 공식 점수로 바뀝니다.' }));
         if (d && d.scaled) papsTd.appendChild(h('span', { class: 'badge warn', text: '환산', title: '일부 영역 기록이 없어 100점 만점으로 환산했습니다' }));
       } else {
@@ -349,7 +374,7 @@
         if (!st) return;
         if (field === 'no') st.no = P.parseNo(val);
         else if (field === 'name') st.name = String(val).trim() || null;
-        else if (field === 'gender') st.gender = val || null;
+        else if (field === 'gender') { st.gender = val || null; st.genderInferred = false; }
         else if (field === 'papsGiven') st.papsGiven = S.toNum(val);
         else if (field.slice(0, 2) === 'v_') { st.virtuesGiven = st.virtuesGiven || {}; st.virtuesGiven[field.slice(2)] = S.toNum(val); if (VK.every(function (k) { return st.virtuesGiven[k] === null || st.virtuesGiven[k] === undefined; })) st.virtuesGiven = null; }
         if (field === 'no' || field === 'name') sortStudents(s.students);

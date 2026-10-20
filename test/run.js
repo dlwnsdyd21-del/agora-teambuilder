@@ -316,5 +316,57 @@ test('병합: 번호 기준, 한쪽만 있는 학생 표시', () => {
   assert.strictEqual(byNo[3].source.paps, false); assert.strictEqual(byNo[3].papsRaw, null);
 });
 
+test('likertValue / parseHakbun', () => {
+  assert.deepStrictEqual(['① 전혀 그렇지 않다', '② 그렇지 않다', '③ 보통이다', '④ 그렇다', '⑤ 매우 그렇다', 4, '3', '5 (매우 그렇다)', '그렇다', '', null].map(P.likertValue), [1, 2, 3, 4, 5, 4, 3, 5, 4, null, null]);
+  assert.deepStrictEqual(P.parseHakbun('10130 홍길동'), { grade: 1, cls: 1, no: 30, name: '홍길동' });
+  assert.deepStrictEqual(P.parseHakbun('30605'), { grade: 3, cls: 6, no: 5, name: null });
+  assert.deepStrictEqual(P.parseHakbun('7번 김가명'), { grade: null, cls: null, no: 7, name: '김가명' });
+  assert.strictEqual(P.parseHakbun(''), null);
+});
+test('나이스 학급별건강체력평가조회 양식: 2줄 헤더·반복 헤더·영역 점수·성별/학년 추정', () => {
+  const XLSX = require(path.join(__dirname, '..', 'vendor', 'xlsx.full.min.js'));
+  const fs = require('fs');
+  const wb = XLSX.read(fs.readFileSync(path.join(__dirname, '..', 'sample', '나이스_건강체력평가조회_샘플.xlsx')), { type: 'buffer' });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null, blankrows: false });
+  const det = P.detectTable(rows);
+  assert.strictEqual(det.headerRow, 4); assert.ok(det.meta.twoRowHeader && det.meta.neis);
+  assert.strictEqual(det.meta.gradeHint, 1);
+  const m = det.mapping;
+  assert.strictEqual(m.no, 0); assert.strictEqual(m.name, 1); assert.strictEqual(m.papsGiven, 2);
+  assert.strictEqual(m.run, 4); assert.strictEqual(m['pts_심폐'], 7); assert.strictEqual(m.flex1, 9); assert.strictEqual(m['pts_유연'], 13);
+  assert.strictEqual(m.pushup, 17); assert.strictEqual(m.situp, 18); assert.strictEqual(m.grip, 19); assert.strictEqual(m['pts_근력'], 20);
+  assert.strictEqual(m.run50, 23); assert.strictEqual(m.jump1, 24); assert.strictEqual(m['pts_순발'], 25); assert.strictEqual(m.bmi, 28); assert.strictEqual(m['pts_체지방'], 29); assert.strictEqual(m.bmiCat, 30);
+  assert.strictEqual(m.flex2, undefined); assert.strictEqual(m.jump2, undefined);
+  const recs = P.extractStudents(rows, det);
+  assert.strictEqual(recs.length, 28, '반복 헤더 행 제외');
+  assert.ok(recs.every(x => x.name !== '성명'));
+  assert.strictEqual(recs[0].grade, 1);
+  assert.deepStrictEqual(Object.keys(recs[0].papsNeis.areas).sort(), ['근력', '순발', '심폐', '유연', '체지방']);
+  assert.strictEqual(recs[0].papsNeis.total, recs[0].papsGiven);
+  const st = P.mergeStudents(recs, []);
+  const inf = S.inferFromNeis(st, {});
+  assert.strictEqual(inf.gradeKey, '고1'); assert.ok(inf.gradeKeyShare > 0.95, 'share ' + inf.gradeKeyShare);
+  assert.strictEqual(inf.inferred, 27);
+  st.forEach(s => { const r = inf.byId[s.id]; if (r) s.gender = r.gender; });
+  assert.ok(st.filter(s => s.gender === '남').length === 14 || st.filter(s => s.gender === '남').length === 13);
+  const prep = S.prepareStudents(st, { schoolLevel: '고', defaultGrade: 1 });
+  prep.forEach(p => { if (p.papsNeis) { assert.strictEqual(p.papsDetail.source, 'neis'); approx(p.papsPoints, p.papsNeis.total); } });
+  assert.strictEqual(prep.find(p => p.no === 27).papsImputed, true);
+});
+test('구글폼 응답 양식: 학번·객관식 글자 응답 → 번호·이름·학년·1~5점', () => {
+  const XLSX = require(path.join(__dirname, '..', 'vendor', 'xlsx.full.min.js'));
+  const fs = require('fs');
+  const wb = XLSX.read(fs.readFileSync(path.join(__dirname, '..', 'sample', '인성설문_구글폼응답_샘플.xlsx')), { type: 'buffer' });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null, blankrows: false });
+  const det = P.detectTable(rows);
+  assert.strictEqual(det.mapping.hakbun, 2); assert.strictEqual(det.mapping.itemCount, 32); assert.deepStrictEqual(det.warnings, []);
+  const recs = P.extractStudents(rows, det);
+  assert.strictEqual(recs.length, 27);
+  assert.strictEqual(recs[0].no, 1); assert.strictEqual(recs[0].grade, 1); assert.ok(recs[0].name && recs[0].name.length >= 2);
+  assert.ok(recs[0].items.every(v => Number.isInteger(v) && v >= 1 && v <= 5));
+  const v = S.computeVirtues(recs[0].items);
+  assert.ok(Q.VIRTUE_KEYS.every(k => v[k] >= 1 && v[k] <= 5));
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

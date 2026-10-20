@@ -80,15 +80,73 @@
   };
   var AREA_SHORT = { '심폐지구력': '심폐', '유연성': '유연', '근력·근지구력': '근력', '순발력': '순발', '체지방': '체지방' };
 
-  /* raw: {run, flex1, flex2, situp, pushup, grip, jump1, jump2, run50, height, weight} → 종목별 값 */
+  /* raw: {run, flex1, flex2, situp, pushup, grip, jump1, jump2, run50, height, weight, bmi} → 종목별 값 */
   function papsItemValues(raw, includeBmi) {
     if (!raw) return {};
     var out = {
       run: toNum(raw.run), flex: best(raw.flex1, raw.flex2), situp: toNum(raw.situp),
       pushup: toNum(raw.pushup), grip: toNum(raw.grip), jump: best(raw.jump1, raw.jump2), run50: toNum(raw.run50)
     };
-    if (includeBmi !== false) out.bmi = bmiValue(raw.height, raw.weight);
+    if (includeBmi !== false) {
+      var direct = toNum(raw.bmi);
+      out.bmi = direct !== null ? direct : bmiValue(raw.height, raw.weight);
+    }
     return out;
+  }
+
+  var AREA_OF_ITEM = { run: '심폐', flex: '유연', situp: '근력', pushup: '근력', grip: '근력', jump: '순발', run50: '순발', bmi: '체지방' };
+  var AREA_FULL = { '심폐': '심폐지구력', '유연': '유연성', '근력': '근력·근지구력', '순발': '순발력', '체지방': '체지방' };
+
+  /*
+   * NEIS 영역 점수와 기준표 계산을 대조해 성별(과 학년)을 추정.
+   * students: [{id, gender, papsRaw, papsNeis}] → { byId: {id:{gender, gradeKey, matches, compared}}, gradeKey, counts }
+   */
+  function inferFromNeis(students, options) {
+    options = options || {};
+    var includeBmi = options.includeBmi !== false;
+    var cand = [];
+    students.forEach(function (s) {
+      if (!s.papsNeis || !s.papsNeis.areas || !s.papsRaw) return;
+      var values = papsItemValues(s.papsRaw, includeBmi);
+      var keys = ['run', 'flex', 'situp', 'pushup', 'grip', 'jump', 'run50'].filter(function (k) {
+        return values[k] !== null && values[k] !== undefined && s.papsNeis.areas[AREA_OF_ITEM[k]] !== undefined;
+      });
+      if (keys.length < 2) return;
+      cand.push({ s: s, values: values, keys: keys });
+    });
+    function score(c, g, gk) {
+      var matches = 0, compared = 0;
+      c.keys.forEach(function (k) {
+        var r = T.itemPoints(k, c.values[k], g, gk);
+        if (!r) return;
+        compared++;
+        if (r.points === c.s.papsNeis.areas[AREA_OF_ITEM[k]]) matches++;
+      });
+      return { matches: matches, compared: compared };
+    }
+    /* 1차: 학년(기준표)을 학급 전체 일치 수로 결정 */
+    var gkTotal = {};
+    T.GRADE_KEYS.forEach(function (gk) {
+      var sum = 0;
+      cand.forEach(function (c) { sum += Math.max(score(c, '남', gk).matches, score(c, '여', gk).matches); });
+      gkTotal[gk] = sum;
+    });
+    var gradeKey = null, max = -1, possible = 0;
+    cand.forEach(function (c) { possible += c.keys.length; });
+    T.GRADE_KEYS.forEach(function (gk) { if (gkTotal[gk] > max) { max = gkTotal[gk]; gradeKey = gk; } });
+    /* 2차: 정해진 학년 아래에서 학생별 성별 */
+    var byId = {}, genderCount = { 남: 0, 여: 0 }, n = 0;
+    if (gradeKey) cand.forEach(function (c) {
+      var m = score(c, '남', gradeKey), f = score(c, '여', gradeKey);
+      var need = Math.max(2, m.compared - 1);
+      var g = null;
+      if (m.matches > f.matches && m.matches >= need) g = '남';
+      else if (f.matches > m.matches && f.matches >= need) g = '여';
+      if (!g) return;
+      byId[c.s.id] = { gender: g, gradeKey: gradeKey, matches: g === '남' ? m.matches : f.matches, compared: m.compared };
+      genderCount[g]++; n++;
+    });
+    return { byId: byId, gradeKey: gradeKey, gradeKeyShare: possible ? max / possible : 0, counts: genderCount, inferred: n, candidates: cand.length };
   }
 
   function gradeKeyFor(student, options) {
@@ -160,7 +218,30 @@
     students.forEach(function (s) {
       var d = { source: null, gradeKey: null, gender: s.gender || null, areas: {}, items: {}, nAreas: 0, scaled: false, missing: [], total: null };
       var given = toNum(s.papsGiven);
-      if (given !== null) {
+      var neis = s.papsNeis && s.papsNeis.areas ? s.papsNeis.areas : null;
+      if (neis && Object.keys(neis).length) {
+        /* NEIS 조회 양식: 나이스가 계산한 영역 점수를 그대로 사용 */
+        var values0 = valuesById[s.id] || {};
+        var sum = 0, n = 0;
+        Object.keys(AREA_FULL).forEach(function (a) {
+          if (neis[a] === undefined) { d.missing.push(AREA_FULL[a]); return; }
+          if (a === '체지방' && !includeBmi) { d.missing.push(AREA_FULL[a]); return; }
+          var pts = neis[a];
+          var grade = pts >= 16 ? 1 : pts >= 12 ? 2 : pts >= 8 ? 3 : pts >= 4 ? 4 : 5;
+          var key = null;
+          ['run', 'flex', 'situp', 'pushup', 'grip', 'jump', 'run50', 'bmi'].forEach(function (k) {
+            if (!key && AREA_OF_ITEM[k] === a && values0[k] !== null && values0[k] !== undefined) key = k;
+          });
+          d.areas[AREA_FULL[a]] = { key: key || a, points: pts, grade: grade };
+          if (key) d.items[key] = { value: values0[key], points: pts, grade: grade, category: a === '체지방' ? (s.papsNeis.bmiCat || null) : null };
+          sum += pts; n++;
+        });
+        d.nAreas = n;
+        d.scaled = n > 0 && n < 5;
+        d.total = n ? (n === 5 && given !== null ? Math.max(0, Math.min(100, given)) : sum * 5 / n) : null;
+        d.source = 'neis';
+        d.gradeKey = gradeKeyFor(s, options);
+      } else if (given !== null) {
         if (options.papsGivenType === 'grade') {
           var g = Math.max(1, Math.min(5, Math.round(given)));
           d.total = GRADE_REP_POINTS[g]; d.source = 'grade';
@@ -253,7 +334,7 @@
   var api = {
     toNum: toNum, mean: mean, sd: sd, zScores: zScores, bmiValue: bmiValue, papsItemValues: papsItemValues,
     PAPS_ITEM_KEYS: PAPS_ITEM_KEYS, PAPS_ITEM_LABELS: PAPS_ITEM_LABELS, AREA_ITEMS: AREA_ITEMS, AREA_SHORT: AREA_SHORT,
-    gradeKeyFor: gradeKeyFor, computePapsPoints: computePapsPoints,
+    gradeKeyFor: gradeKeyFor, computePapsPoints: computePapsPoints, inferFromNeis: inferFromNeis,
     computeVirtues: computeVirtues, virtuesFromGiven: virtuesFromGiven, prepareStudents: prepareStudents
   };
   root.AgoraScoring = api;

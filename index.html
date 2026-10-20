@@ -44,7 +44,7 @@
       <p class="desc">PAPS 자료와 인성 설문 자료를 각각 올리면 <b>번호</b>(없으면 이름) 기준으로 합칩니다. 열은 자동으로 인식하고, 틀리면 아래 매핑에서 고칠 수 있습니다.</p>
       <div class="import-grid">
         <div class="import-panel" data-kind="paps">
-          <h3>PAPS 자료 <span class="hint">NEIS 학급별일괄입력 xlsx(원기록) 또는 PAPS 총점·등급 표</span></h3>
+          <h3>PAPS 자료 <span class="hint">나이스 학급별건강체력평가조회 xlsx(권장) · 학급별일괄입력 xlsx · PAPS 총점 표</span></h3>
           <div class="dropzone" data-kind="paps">
             <p>파일을 여기에 끌어다 놓거나</p>
             <div class="row">
@@ -61,7 +61,7 @@
         </div>
 
         <div class="import-panel" data-kind="survey">
-          <h3>인성 설문 자료 <span class="hint">32문항 응답(구글폼 시트 등) 또는 성실·협동·정의·배려 4덕목 점수</span></h3>
+          <h3>인성 설문 자료 <span class="hint">구글폼 응답 시트(학번 + 32문항) 또는 성실·협동·정의·배려 4덕목 점수</span></h3>
           <div class="dropzone" data-kind="survey">
             <p>파일을 여기에 끌어다 놓거나</p>
             <div class="row">
@@ -80,9 +80,10 @@
       <details class="help">
         <summary>어떤 형식을 읽을 수 있나요?</summary>
         <ul>
-          <li><b>PAPS 원기록</b>: NEIS "학급별일괄입력" 양식(왕복오래달리기·앉아윗몸앞으로굽히기 1/2차·윗몸말아올리기·제자리멀리뛰기 1/2차·신장·체중). 팔굽혀펴기·악력·50m달리기 열도 읽습니다. 공식 기준표(학교건강검사규칙 별표 4, 2025.3.10 개정)로 종목당 0~20점, 5영역 합계 100점으로 계산합니다.</li>
+          <li><b>나이스 "학급별건강체력평가조회" (권장)</b>: [평가결과조회 → 학급별조회 → 엑셀 내려받기] 파일. 나이스가 계산한 영역별 점수·총점·등급을 그대로 사용하고, 점수와 기준표를 대조해 성별·학년(기준표)을 자동 추정합니다(명단에서 확인·수정).</li>
+          <li><b>나이스 "학급별일괄입력"</b>(원기록: 왕복오래달리기·앉아윗몸앞으로굽히기 1/2차·윗몸말아올리기·제자리멀리뛰기 1/2차·신장·체중, 팔굽혀펴기·악력·50m달리기도 인식): 공식 기준표(학교건강검사규칙 별표 4·5)로 종목당 0~20점, 5영역 합계 100점으로 직접 계산합니다. 성별·학년이 필요합니다.</li>
           <li><b>PAPS 계산값</b>: 번호·이름과 "PAPS 총점"(100점 만점) 또는 "PAPS 등급"(1~5) 한 열.</li>
-          <li><b>인성 32문항</b>: 헤더가 1~32 번호이거나 문항 원문(구글폼)이면 자동 인식. B1~B5 보조문항은 자동 제외. 성실(1–8)·협동(9–16)·정의(17–24)·배려(25–32) 평균을 씁니다.</li>
+          <li><b>인성 32문항 (구글폼 응답 시트)</b>: 헤더가 "1. 문항…"처럼 번호로 시작하거나 문항 원문이면 자동 인식. 응답이 "④ 그렇다" 같은 글자여도 1~5점으로 읽습니다. <b>학번</b> 열("10130 홍길동" = 1학년 1반 30번)에서 번호·이름·학년을 읽고, 학교·타임스탬프 열과 B1~B5 보조문항은 제외합니다. 성실(1–8)·협동(9–16)·정의(17–24)·배려(25–32) 평균을 씁니다.</li>
           <li><b>인성 4덕목</b>: 성실·협동·정의·배려 열(1~5점).</li>
           <li>성별 열(남/여)이 있으면 함께 읽습니다. 빈 양식은 5번 내보내기에서 받을 수 있습니다.</li>
         </ul>
@@ -213,14 +214,14 @@
 
   <script src="vendor/xlsx.full.min.js"></script>
   <script>if (!window.XLSX) { document.write('<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"><\/script>'); }</script>
-  <script src="js/questions.js?v=2"></script>
-  <script src="js/paps_table.js?v=2"></script>
-  <script src="js/scoring.js?v=2"></script>
-  <script src="js/algorithm.js?v=2"></script>
-  <script src="js/parse.js?v=2"></script>
-  <script src="js/state.js?v=2"></script>
-  <script src="js/export.js?v=2"></script>
-  <script src="js/ui.js?v=2"></script>
-  <script src="js/app.js?v=2"></script>
+  <script src="js/questions.js?v=3"></script>
+  <script src="js/paps_table.js?v=3"></script>
+  <script src="js/scoring.js?v=3"></script>
+  <script src="js/algorithm.js?v=3"></script>
+  <script src="js/parse.js?v=3"></script>
+  <script src="js/state.js?v=3"></script>
+  <script src="js/export.js?v=3"></script>
+  <script src="js/ui.js?v=3"></script>
+  <script src="js/app.js?v=3"></script>
 </body>
 </html>
