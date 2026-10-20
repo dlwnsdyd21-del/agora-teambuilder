@@ -482,5 +482,29 @@ test('auto 모드: 편성 결과를 라운드별 공개 순서로, fillRemaining
   assert.ok(base.some(s => an.codes[s.id] !== '선수 ' + (s.no < 10 ? '0' : '') + s.no), '번호와 달라야 함');
 });
 
+test('팀 고정: pick·credit 모드에서 미리 배치, 지명 대상 제외, 인원 균형', () => {
+  const pinned = { S1: 0, S2: 0, S5: 3 };
+  for (const mode of ['pick', 'credit']) {
+    const st = D.initDraft(base, { mode, teamCount: 6, genderBalance: true, seed: 8, pinned });
+    assert.deepStrictEqual(st.teams[0].slice().sort(), ['S1', 'S2']); assert.deepStrictEqual(st.teams[3], ['S5']);
+    assert.strictEqual(st.sequence.length, base.length - 3, mode + ' 지명 횟수');
+    let guard = 0;
+    while (!D.isDone(st) && guard++ < 100) {
+      const c = D.candidates(st, base);
+      assert.ok(!c.ids.includes('S1') && !c.ids.includes('S2') && !c.ids.includes('S5'), '고정 학생은 후보 아님');
+      assert.ok(D.pick(st, D.autoPick(st, base), base).ok);
+    }
+    assert.ok(D.isDone(st));
+    assert.strictEqual(new Set(st.teams.flat()).size, base.length, mode + ' 전원 배치');
+    const sizes = st.teams.map(t => t.length);
+    assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, mode + ' 인원 ' + sizes);
+    assert.ok(st.teams[0].includes('S1') && st.teams[0].includes('S2') && st.teams[3].includes('S5'));
+    // 되돌리기는 고정 학생을 빼지 않음
+    while (D.undo(st)) {}
+    assert.deepStrictEqual(st.teams[0].slice().sort(), ['S1', 'S2']);
+    if (mode === 'credit') assert.strictEqual(st.spent[0], st.costs.S1 + st.costs.S2);
+  }
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

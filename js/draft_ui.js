@@ -67,9 +67,11 @@
 
   /* 익명 드래프트 표시 도우미 */
   function showNames() { return !draft || !draft.anonymous || ui.revealNames; }
-  function labelOf(p) { return showNames() ? (p.name || '(이름 없음)') : (draft.codes && draft.codes[p.id]) || '선수'; }
+  function isPinned(p) { return !!(draft && draft.pinned && draft.pinned[p.id] !== undefined); }
+  /* 팀 고정 학생은 익명 모드에서도 실명 */
+  function labelOf(p) { return (showNames() || isPinned(p)) ? (p.name || '(이름 없음)') : (draft.codes && draft.codes[p.id]) || '선수'; }
   function avatarText(p) {
-    if (showNames()) return p.no !== null && p.no !== undefined ? p.no : '?';
+    if (showNames() || isPinned(p)) return p.no !== null && p.no !== undefined ? p.no : '?';
     var c = draft.codes && draft.codes[p.id]; return c ? c.replace(/\D/g, '') : '?';
   }
 
@@ -102,7 +104,8 @@
     $('#d-timer').checked = !!(o.draftTimerSec > 0);
     if (o.draftTimerSec > 0) $('#d-timer-sec').value = o.draftTimerSec;
     $('#d-anon').checked = o.draftAnonymous !== false;
-    $('#d-setup-info').textContent = prepared.length ? ('학생 ' + prepared.length + '명 (남 ' + prepared.filter(function (p) { return p.gender === '남'; }).length + ' · 여 ' + prepared.filter(function (p) { return p.gender === '여'; }).length + '). 방식을 고르고 시작하세요.') : '학생 자료가 없습니다. 메인 화면 1단계에서 자료를 불러온 뒤 다시 여세요.';
+    var pinnedN = Object.keys(session.options.pinned || {}).filter(function (id) { return byId[id]; }).length;
+    $('#d-setup-info').textContent = prepared.length ? ('학생 ' + prepared.length + '명 (남 ' + prepared.filter(function (p) { return p.gender === '남'; }).length + ' · 여 ' + prepared.filter(function (p) { return p.gender === '여'; }).length + ')' + (pinnedN ? ' · 팀 고정 ' + pinnedN + '명은 해당 팀에 미리 배치됩니다(실명 표시)' : '') + '. 방식을 고르고 시작하세요.') : '학생 자료가 없습니다. 메인 화면 1단계에서 자료를 불러온 뒤 다시 여세요.';
     $('#d-start').disabled = !prepared.length;
     renderNames(); renderOrder(); updateModeUI();
   }
@@ -158,7 +161,7 @@
       if (res.log && res.log.length) toast(res.log[0]);
     }
     var anonymous = ui.mode !== 'auto' && $('#d-anon').checked;
-    draft = D.initDraft(prepared, { mode: ui.mode, teamCount: K, genderBalance: genderBalance, seed: ui.seed, fitnessWeight: weight, teamNames: names, autoTeams: autoTeams, anonymous: anonymous });
+    draft = D.initDraft(prepared, { mode: ui.mode, teamCount: K, genderBalance: genderBalance, seed: ui.seed, fitnessWeight: weight, teamNames: names, autoTeams: autoTeams, anonymous: anonymous, pinned: session.options.pinned || {} });
     draft.studentKey = prepared.map(function (p) { return p.id; }).sort().join('|');
     draft.timerSec = timerSec;
     St.update(function (s) {
@@ -293,9 +296,11 @@
         var p = byId[id], pr = prof[id];
         if (!p) return;
         var isNew = lastPick && lastPick.id === id;
-        ul.appendChild(h('li', { class: 'member' + (isNew ? ' new' : '') + (ui.revealAnim ? ' unmask' : ''), style: 'animation-delay:' + (ui.revealAnim ? (t * 120 + i * 90) : (isNew ? 0 : i * 40)) + 'ms', title: ui.detail ? ('PAPS ' + fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' ')) : '' },
+        var pinnedHere = isPinned(p);
+        ul.appendChild(h('li', { class: 'member' + (isNew ? ' new' : '') + (ui.revealAnim && !pinnedHere ? ' unmask' : '') + (pinnedHere ? ' pinned' : ''), style: 'animation-delay:' + (ui.revealAnim ? (t * 120 + i * 90) : (isNew ? 0 : i * 40)) + 'ms', title: (pinnedHere ? '팀 고정 (미리 배치)' : '') + (ui.detail ? ('\nPAPS ' + fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' ')) : '') },
           h('span', { class: 'mini' }, jersey(avatarText(p), color(t), 'small')),
           h('span', { class: 'nm', text: labelOf(p) }),
+          pinnedHere ? h('span', { class: 'pin', text: '📌', title: '팀 고정' }) : null,
           h('span', { class: 'tg', text: pr.icon + (draft.mode === 'credit' ? ' 💎' + draft.costs[id] : '') })));
       });
       for (var s = draft.teams[t].length; s < draft.slots[t]; s++) ul.appendChild(h('li', { class: 'member slot', text: '빈 자리' }));
