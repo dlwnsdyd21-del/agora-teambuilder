@@ -101,14 +101,33 @@
     }
   }
 
+  var lastImport = { paps: null, survey: null };  // 자동 반영한 파일의 매핑 (수정용)
+
+  /* 열 인식이 확실한가: 학생 식별 열 + 점수 열이 있고 경고가 없음 */
+  function isConfident(det) {
+    var m = det.mapping;
+    var hasId = m.no !== undefined || m.hakbun !== undefined || m.name !== undefined;
+    var hasData = (det.meta && det.meta.neis) || m.run !== undefined || m.papsGiven !== undefined || m.itemCount === 32 || m['v_성실'] !== undefined;
+    return hasId && hasData && det.warnings.length === 0;
+  }
+
   function setPending(kind, fileName, sheets) {
     sheets = (sheets || []).filter(function (sh) { return sh.rows && sh.rows.length; });
     if (!sheets.length) { toast('읽을 수 있는 표가 없습니다.', true); return; }
     /* 가장 잘 인식되는 시트를 기본 선택 */
     var bestIdx = 0, bestScore = -1;
     sheets.forEach(function (sh, i) { var d = P.detectTable(sh.rows); if (d.score > bestScore) { bestScore = d.score; bestIdx = i; } });
-    pending[kind] = { fileName: fileName, sheets: sheets, sheetIndex: bestIdx, det: null };
-    pending[kind].det = P.detectTable(sheets[bestIdx].rows);
+    pending[kind] = { fileName: fileName, sheets: sheets, sheetIndex: bestIdx, det: P.detectTable(sheets[bestIdx].rows) };
+    /* 확실하면 확인 없이 바로 반영 */
+    if (sheets.length === 1 && isConfident(pending[kind].det)) {
+      lastImport[kind] = pending[kind];
+      if (applyPending(kind, true)) {
+        var roster = $('#sec-roster');
+        if (roster) roster.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+      pending[kind] = lastImport[kind]; lastImport[kind] = null;
+    }
     renderMapping(kind);
   }
 
@@ -122,11 +141,27 @@
     var wrap = h('div', { class: 'map-box' });
     wrap.appendChild(h('div', { class: 'row wrap' },
       h('b', { text: pd.fileName }),
-      pd.sheets.length > 1 ? h('label', { class: 'inline' }, '시트 ',
+      pd.sheets.length > 1 ? h('label', { class: 'inline' }, '시트(학급) ',
         h('select', { onchange: function (e) { pd.sheetIndex = +e.target.value; pd.det = P.detectTable(pd.sheets[pd.sheetIndex].rows); renderMapping(kind); } },
           pd.sheets.map(function (sh, i) { return h('option', { value: i, selected: i === pd.sheetIndex, text: sh.name + ' (' + sh.rows.length + '행)' }); }))) : h('span', { class: 'hint', text: rows.length + '행' })
     ));
     det.warnings.forEach(function (w) { wrap.appendChild(h('div', { class: 'warn', text: w })); });
+    /* 인식 요약 + 적용 버튼을 먼저, 세부 매핑은 접어 둠 */
+    var found = [];
+    if (m.no !== undefined) found.push('번호'); if (m.hakbun !== undefined) found.push('학번'); if (m.name !== undefined) found.push('이름'); if (m.gender !== undefined) found.push('성별');
+    if (det.meta && det.meta.neis) found.push('나이스 영역 점수'); else if (m.run !== undefined || m.flex1 !== undefined) found.push('PAPS 원기록');
+    if (m.papsGiven !== undefined) found.push('PAPS 총점');
+    if (m.itemCount) found.push('인성 ' + m.itemCount + '문항'); if (m['v_성실'] !== undefined) found.push('4덕목');
+    var recCount = P.extractStudents(rows, det).length;
+    wrap.appendChild(h('div', { class: 'row wrap', style: 'margin:.5rem 0' },
+      h('span', { class: 'hint', text: '인식된 열: ' + (found.join(' · ') || '없음') + ' · 학생 ' + recCount + '명' }),
+      h('button', { class: 'btn primary', type: 'button', onclick: function () { applyPending(kind); } }, '이 자료 반영'),
+      h('button', { class: 'btn ghost', type: 'button', onclick: function () { detail.hidden = !detail.hidden; this.textContent = detail.hidden ? '열 매핑 보기' : '열 매핑 닫기'; } }, '열 매핑 보기'),
+      h('button', { class: 'btn ghost', type: 'button', onclick: function () { pending[kind] = null; clear(box); } }, '취소')
+    ));
+    var detail = h('div', { hidden: true });
+    wrap.appendChild(detail);
+    var wrapOuter = wrap; wrap = detail;
 
     /* 필드 매핑 표 */
     var colOptions = function (selected) {
@@ -169,30 +204,27 @@
     });
     prev.appendChild(pt);
     wrap.appendChild(prev);
-
-    wrap.appendChild(h('div', { class: 'row', style: 'margin-top:.6rem' },
-      h('button', { class: 'btn primary', type: 'button', onclick: function () { applyPending(kind); } }, '이 자료 적용'),
-      h('button', { class: 'btn ghost', type: 'button', onclick: function () { pending[kind] = null; clear(box); } }, '취소')
-    ));
-    box.appendChild(wrap);
+    box.appendChild(wrapOuter);
   }
   function colLetter(c) { var s = ''; c = c + 1; while (c > 0) { var r = (c - 1) % 26; s = String.fromCharCode(65 + r) + s; c = Math.floor((c - 1) / 26); } return s; }
 
-  function applyPending(kind) {
+  /* quiet: 자동 반영 시 실패해도 토스트 대신 false 반환 */
+  function applyPending(kind, quiet) {
     var pd = pending[kind];
-    if (!pd) return;
+    if (!pd) return false;
     var sheet = pd.sheets[pd.sheetIndex];
     var det = pd.det;
     det.mapping.itemCount = det.mapping.items.filter(function (c) { return c >= 0; }).length;
-    if (det.mapping.no === undefined && det.mapping.name === undefined && det.mapping.hakbun === undefined) { toast('번호, 학번 또는 이름 열을 지정해 주세요.', true); return; }
+    if (det.mapping.no === undefined && det.mapping.name === undefined && det.mapping.hakbun === undefined) { if (!quiet) toast('번호, 학번 또는 이름 열을 지정해 주세요.', true); return false; }
     var recs = P.extractStudents(sheet.rows, det);
-    if (!recs.length) { toast('학생 행을 찾지 못했습니다. 헤더 행과 번호/이름 열을 확인하세요.', true); return; }
+    if (!recs.length) { if (!quiet) toast('학생 행을 찾지 못했습니다. 헤더 행과 번호/이름 열을 확인하세요.', true); return false; }
     var hasData = recs.some(function (r) { return r.papsRaw || r.papsGiven !== null || r.items || r.virtuesGiven; });
-    if (!hasData) { toast('점수 열(PAPS 원기록/총점 또는 32문항/4덕목)을 지정해 주세요.', true); return; }
+    if (!hasData) { if (!quiet) toast('점수 열(PAPS 원기록/총점 또는 32문항/4덕목)을 지정해 주세요.', true); return false; }
     applyImport(kind, recs, { fileName: pd.fileName, sheetName: sheet.name, papsGivenType: det.mapping.papsGivenType, neis: det.meta && det.meta.neis });
+    lastImport[kind] = pd;
     pending[kind] = null;
     clear($('#map-' + kind));
-    var msg = recs.length + '명의 자료를 적용했습니다.';
+    var msg = recs.length + '명의 자료를 반영했습니다.';
     if (det.meta && det.meta.neis) {
       var s = St.get();
       var inf = S.inferFromNeis(s.students, s.options);
@@ -212,6 +244,7 @@
       }
     }
     toast(msg);
+    return true;
   }
 
   function applyImport(kind, recs, meta) {
@@ -266,7 +299,13 @@
       var el = clear($('#import-status-' + kind));
       var im = s.imports && s.imports[kind];
       var cnt = s.students.filter(function (st) { return st.source && st.source[kind]; }).length;
-      if (im) el.appendChild(h('div', { class: 'ok' }, '✔ ' + im.fileName + (im.sheetName && im.sheetName !== 'CSV' ? ' / ' + im.sheetName : '') + ' · ' + im.rowCount + '명 적용 (현재 ' + cnt + '명)'));
+      if (im) {
+        var line = h('div', { class: 'ok' }, '✔ ' + im.fileName + (im.sheetName && im.sheetName !== 'CSV' && im.sheetName !== 'sheet1' ? ' / ' + im.sheetName : '') + ' · ' + im.rowCount + '명 반영 (현재 ' + cnt + '명)');
+        if (lastImport[kind] && lastImport[kind].fileName === im.fileName) {
+          line.appendChild(h('button', { class: 'btn ghost small', type: 'button', style: 'margin-left:.5rem', title: '열 인식이 잘못됐다면 직접 고쳐 다시 반영', onclick: function () { pending[kind] = lastImport[kind]; renderMapping(kind); } }, '열 매핑 수정'));
+        }
+        el.appendChild(line);
+      }
       else el.appendChild(h('div', { class: 'hint' }, cnt ? cnt + '명에게 자료가 있습니다.' : '아직 불러온 자료가 없습니다.'));
     });
   }
