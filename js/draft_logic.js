@@ -75,7 +75,10 @@
   /* ---------- 지명 순서 ---------- */
   function serpentine(order, round) { return round % 2 === 0 ? order.slice() : order.slice().reverse(); }
 
-  /* 'pick' 모드 풀: 성별 그룹별 PAPS 내림차순 → K명씩 묶음 → 그룹 번갈아 */
+  /*
+   * 'pick' 모드 풀: 성별 그룹별로 PAPS 내림차순 → 2K명씩 '체력 구간' → 구간 안에서 인성 평균 순으로
+   * K명씩 묶음(풀). 한 풀 안은 체력·인성 수준이 비슷하고 강점 덕목만 다르게 됨. 그룹은 번갈아 배치.
+   */
   function buildPools(prepared, K, genderBalance, rng) {
     var groups = {};
     prepared.forEach(function (p) { var g = genderBalance ? gKey(p.gender) : 'all'; (groups[g] = groups[g] || []).push(p); });
@@ -84,7 +87,11 @@
       var jitter = {}; list.forEach(function (p) { jitter[p.id] = rng(); });
       list.sort(function (a, b) { return (b.papsPoints - a.papsPoints) || (jitter[a.id] - jitter[b.id]); });
       var chunks = [];
-      for (var i = 0; i < list.length; i += K) chunks.push(list.slice(i, i + K).map(function (p) { return p.id; }));
+      for (var i = 0; i < list.length; i += 2 * K) {
+        var band = list.slice(i, i + 2 * K);
+        band.sort(function (a, b) { return (virtueMean(b) - virtueMean(a)) || (jitter[a.id] - jitter[b.id]); });
+        for (var j = 0; j < band.length; j += K) chunks.push(band.slice(j, j + K).map(function (p) { return p.id; }));
+      }
       return chunks;
     });
     chunksByGroup.sort(function (a, b) { return b.length - a.length; });
@@ -115,6 +122,13 @@
       sequence: [], cursor: 0, status: 'running', seed: options.seed || 1, createdAt: new Date().toISOString()
     };
     while (state.teamNames.length < K) state.teamNames.push((state.teamNames.length + 1) + '팀');
+    /* 익명 드래프트: 출석번호와 무관한 무작위 코드 */
+    state.anonymous = !!options.anonymous;
+    if (state.anonymous) {
+      var nums = shuffle(Array.from({ length: N }, function (_, i) { return i + 1; }), rng);
+      state.codes = {};
+      prepared.forEach(function (p, i) { state.codes[p.id] = '선수 ' + (nums[i] < 10 ? '0' : '') + nums[i]; });
+    }
 
     if (state.mode === 'pick') {
       state.pools = buildPools(prepared, K, state.genderBalance, rng);

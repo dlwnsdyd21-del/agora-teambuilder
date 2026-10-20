@@ -10,7 +10,7 @@
   var DEFAULT_OPTIONS = {
     teamCount: 6, genderBalance: true, papsTolerance: 4, includeBmi: true,
     schoolLevel: '중', defaultGrade: 1, papsGivenType: 'score', seed: 1, together: [], apart: [], pinned: {},
-    draftMode: 'auto', creditFitnessWeight: 0.6, draftTimerSec: 0
+    draftMode: 'auto', creditFitnessWeight: 0.6, draftTimerSec: 0, draftAnonymous: true
   };
 
   function newSession() {

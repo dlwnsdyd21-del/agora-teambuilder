@@ -46,7 +46,15 @@
 
   /* ---------- 상태 ---------- */
   var session, prepared = [], byId = {}, prof = {}, draft = null;
-  var ui = { mode: 'pick', seed: 1, detail: false, autoplay: null, timer: null, timerLeft: 0, lastReveal: null, confettiDone: false };
+  var ui = { mode: 'pick', seed: 1, detail: false, autoplay: null, timer: null, timerLeft: 0, lastReveal: null, confettiDone: false, revealNames: false, revealAnim: false };
+
+  /* 익명 드래프트 표시 도우미 */
+  function showNames() { return !draft || !draft.anonymous || ui.revealNames; }
+  function labelOf(p) { return showNames() ? (p.name || '(이름 없음)') : (draft.codes && draft.codes[p.id]) || '선수'; }
+  function avatarText(p) {
+    if (showNames()) return p.no !== null && p.no !== undefined ? p.no : '?';
+    var c = draft.codes && draft.codes[p.id]; return c ? c.replace(/\D/g, '') : '?';
+  }
 
   function persist() { St.update(function (s) { s.draft = draft; }, { noUndo: true }); St.persistNow(); }
 
@@ -76,12 +84,14 @@
     $('#d-weight-val').textContent = Math.round($('#d-weight').value * 100) + '%';
     $('#d-timer').checked = !!(o.draftTimerSec > 0);
     if (o.draftTimerSec > 0) $('#d-timer-sec').value = o.draftTimerSec;
+    $('#d-anon').checked = o.draftAnonymous !== false;
     $('#d-setup-info').textContent = prepared.length ? ('학생 ' + prepared.length + '명 (남 ' + prepared.filter(function (p) { return p.gender === '남'; }).length + ' · 여 ' + prepared.filter(function (p) { return p.gender === '여'; }).length + '). 방식을 고르고 시작하세요.') : '학생 자료가 없습니다. 메인 화면 1단계에서 자료를 불러온 뒤 다시 여세요.';
     $('#d-start').disabled = !prepared.length;
     renderNames(); renderOrder(); updateModeUI();
   }
   function updateModeUI() {
     $('#d-weight-wrap').style.display = ui.mode === 'credit' ? '' : 'none';
+    $('#d-anon-wrap').style.display = ui.mode === 'auto' ? 'none' : '';
     var warn = '';
     if (ui.mode === 'auto' && !(session.result && session.result.teams)) warn = '교사 편성 결과가 아직 없어 시작할 때 현재 설정으로 자동 편성합니다.';
     if (ui.mode !== 'auto' && prepared.some(function (p) { return !p.gender; }) && $('#d-gender').checked) warn = '성별이 없는 학생은 별도 풀(미상)로 지명됩니다. 메인 명단에서 성별을 채우면 더 정확합니다.';
@@ -129,24 +139,28 @@
       if (!res) res = A.buildTeams(prepared, Object.assign({}, session.options, { teamCount: K, genderBalance: genderBalance, seed: ui.seed }));
       autoTeams = res.teams;
     }
-    draft = D.initDraft(prepared, { mode: ui.mode, teamCount: K, genderBalance: genderBalance, seed: ui.seed, fitnessWeight: weight, teamNames: names, autoTeams: autoTeams });
+    var anonymous = ui.mode !== 'auto' && $('#d-anon').checked;
+    draft = D.initDraft(prepared, { mode: ui.mode, teamCount: K, genderBalance: genderBalance, seed: ui.seed, fitnessWeight: weight, teamNames: names, autoTeams: autoTeams, anonymous: anonymous });
     draft.studentKey = prepared.map(function (p) { return p.id; }).sort().join('|');
     draft.timerSec = timerSec;
     St.update(function (s) {
       s.draft = draft; s.teamNames = names;
       s.options.draftMode = ui.mode; s.options.teamCount = K; s.options.genderBalance = genderBalance; s.options.creditFitnessWeight = weight; s.options.draftTimerSec = timerSec;
+      s.options.draftAnonymous = $('#d-anon').checked;
     }, { noUndo: true });
     St.persistNow();
-    ui.confettiDone = false;
+    ui.confettiDone = false; ui.revealNames = false; ui.revealAnim = false;
     showStage();
   }
 
   /* ============================================================ 진행 화면 */
   function showStage() {
     $('#d-setup').hidden = true; $('#d-stage').hidden = false; $('#d-boards').hidden = false; $('#d-controls').hidden = false;
-    $('#d-mode').textContent = MODE_LABEL[draft.mode] || draft.mode;
+    $('#d-mode').textContent = (MODE_LABEL[draft.mode] || draft.mode) + (draft.anonymous ? ' · 익명' : '');
     $('#d-auto').textContent = draft.mode === 'auto' ? '다음 공개' : '자동 지명';
     $('#d-detail').checked = ui.detail;
+    $('#d-reveal-wrap').hidden = !draft.anonymous;
+    $('#d-reveal').checked = ui.revealNames;
     render();
   }
 
@@ -166,7 +180,7 @@
       now.appendChild(h('span', { class: 'team-dot', style: 'background:' + color(cur.team) }));
       now.appendChild(h('span', { text: draft.teamNames[cur.team] + (draft.mode === 'auto' ? ' 선수 공개' : ' 지명 차례') }));
       if (draft.mode === 'credit') now.appendChild(h('span', { class: 'sub', text: '남은 크레딧 ' + (draft.budgets[cur.team] - draft.spent[cur.team]) + ' / 남은 자리 ' + D.remainingSlots(draft, cur.team) }));
-      else if (draft.mode === 'pick') now.appendChild(h('span', { class: 'sub', text: '체력 그룹 ' + (cur.pool + 1) + ' (' + draft.pools[cur.pool].length + '명 풀)' }));
+      else if (draft.mode === 'pick') now.appendChild(h('span', { class: 'sub', text: '풀 ' + (cur.pool + 1) + '/' + draft.pools.length + ' · 체력·인성 수준이 비슷한 ' + draft.pools[cur.pool].length + '명 중 원하는 덕목 성향을 고르세요' }));
     } else now.appendChild(h('span', { text: '🎉 드래프트 완료!' }));
     $('#d-progress-bar').style.width = (total ? Math.round(done / total * 100) : 0) + '%';
   }
@@ -181,10 +195,10 @@
   function card(id, opts) {
     opts = opts || {};
     var p = byId[id], pr = prof[id];
-    var el = h('div', { class: 'card' + (opts.disabled ? ' disabled' : '') + (opts.forced ? ' forced' : ''), dataset: { id: id }, style: 'animation-delay:' + ((opts.index || 0) * 45) + 'ms' });
+    var el = h('div', { class: 'card' + (opts.disabled ? ' disabled' : '') + (opts.forced ? ' forced' : '') + (ui.revealAnim ? ' reveal' : ''), dataset: { id: id }, style: 'animation-delay:' + ((opts.index || 0) * 45) + 'ms' });
     el.appendChild(h('div', { class: 'top' },
-      h('div', { class: 'avatar', style: 'background:' + (p.gender === '여' ? '#fda4af' : p.gender === '남' ? '#93c5fd' : '#cbd5e1'), text: p.no !== null && p.no !== undefined ? p.no : '?' }),
-      h('div', { class: 'who' }, h('div', { class: 'nm', text: p.name || '(이름 없음)' }),
+      h('div', { class: 'avatar', style: 'background:' + (p.gender === '여' ? '#fda4af' : p.gender === '남' ? '#93c5fd' : '#cbd5e1'), text: avatarText(p) }),
+      h('div', { class: 'who' }, h('div', { class: 'nm', text: labelOf(p) }),
         h('div', { class: 'meta' }, p.gender ? h('span', { class: 'g ' + (p.gender === '남' ? 'm' : 'f'), text: p.gender }) : null, stars(pr.stars)))));
     el.appendChild(h('div', { class: 'type', text: pr.icon + ' ' + pr.type }));
     var bars = h('div', { class: 'vbars' });
@@ -224,10 +238,24 @@
     if (draft.mode === 'pick') list = draft.pools[cur.pool].filter(function (id) { return !picked[id]; });
     else list = prepared.map(function (p) { return p.id; }).filter(function (id) { return !picked[id]; }).sort(function (a, b) { return draft.costs[b] - draft.costs[a] || byId[b].papsPoints - byId[a].papsPoints; });
     if (!list.length) { pool.appendChild(h('div', { class: 'empty', text: '고를 수 있는 선수가 없습니다.' })); return; }
+    if (draft.mode === 'pick') {
+      /* 덕목 선택 칩: 원하는 성향의 선수 강조 */
+      var counts = {}; list.forEach(function (id) { var k = prof[id].typeKey; counts[k] = (counts[k] || 0) + 1; });
+      var chips = h('div', { class: 'chips' }, h('span', { class: 'hint', text: '덕목 고르기:' }));
+      VK.forEach(function (k) {
+        chips.appendChild(h('button', { class: 'chip-btn' + (ui.virtueFilter === k ? ' on' : '') + (counts[k] ? '' : ' none'), type: 'button',
+          onclick: function () { ui.virtueFilter = ui.virtueFilter === k ? null : k; renderPool(); } }, D.VIRTUE_ICON[k] + ' ' + D.VIRTUE_TYPE[k] + (counts[k] ? ' ' + counts[k] : '')));
+      });
+      if (ui.virtueFilter) chips.appendChild(h('button', { class: 'chip-btn', type: 'button', onclick: function () { ui.virtueFilter = null; renderPool(); } }, '전체 보기'));
+      pool.appendChild(chips);
+      list = list.slice().sort(function (a, b) { return (ui.virtueFilter ? ((prof[b].typeKey === ui.virtueFilter) - (prof[a].typeKey === ui.virtueFilter)) : 0) || VK.indexOf(prof[a].typeKey) - VK.indexOf(prof[b].typeKey); });
+    }
     if (cand.forced) pool.appendChild(h('div', { class: 'empty', style: 'color:var(--danger)', text: '예산 안에서 고를 수 있는 선수가 없어 예산을 초과해 지명합니다.' }));
     else if (cand.loose) pool.appendChild(h('div', { class: 'empty', style: 'color:var(--gold)', text: '어떤 선수를 골라도 크레딧이 조금 남게 됩니다.' }));
     list.forEach(function (id, i) {
-      pool.appendChild(card(id, { index: i, disabled: !elig[id], why: elig[id] ? null : cand.reasons[id], forced: cand.forced, onpick: doPick }));
+      var c = card(id, { index: i, disabled: !elig[id], why: elig[id] ? null : cand.reasons[id], forced: cand.forced, onpick: doPick });
+      if (ui.virtueFilter && prof[id].typeKey !== ui.virtueFilter) c.classList.add('dim');
+      pool.appendChild(c);
     });
   }
 
@@ -247,9 +275,9 @@
         var p = byId[id], pr = prof[id];
         if (!p) return;
         var isNew = lastPick && lastPick.id === id;
-        ul.appendChild(h('li', { class: 'member' + (isNew ? ' new' : ''), style: 'animation-delay:' + (isNew ? 0 : i * 40) + 'ms', title: ui.detail ? ('PAPS ' + fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' ')) : '' },
-          h('span', { class: 'mini', style: 'background:' + color(t), text: p.no !== null ? p.no : '' }),
-          h('span', { class: 'nm', text: p.name || '(이름 없음)' }),
+        ul.appendChild(h('li', { class: 'member' + (isNew ? ' new' : '') + (ui.revealAnim ? ' reveal' : ''), style: 'animation-delay:' + (ui.revealAnim ? (t * 120 + i * 90) : (isNew ? 0 : i * 40)) + 'ms', title: ui.detail ? ('PAPS ' + fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' ')) : '' },
+          h('span', { class: 'mini', style: 'background:' + color(t), text: avatarText(p) }),
+          h('span', { class: 'nm', text: labelOf(p) }),
           h('span', { class: 'tg', text: pr.icon + (draft.mode === 'credit' ? ' 💎' + draft.costs[id] : '') })));
       });
       for (var s = draft.teams[t].length; s < draft.slots[t]; s++) ul.appendChild(h('li', { class: 'member slot', text: '빈 자리' }));
@@ -286,23 +314,32 @@
     }
     banner.appendChild(stats);
     banner.appendChild(h('div', { class: 'actions' },
-      h('button', { class: 'btn primary big', type: 'button', onclick: finish }, '결과 저장하고 메인에서 보기'),
+      draft.anonymous && !ui.revealNames ? h('button', { class: 'btn primary big', type: 'button', onclick: revealNames }, '🎭 이름 공개하기') : null,
+      h('button', { class: 'btn' + (draft.anonymous && !ui.revealNames ? '' : ' primary') + ' big', type: 'button', onclick: finish }, '결과 저장하고 메인에서 보기'),
       h('button', { class: 'btn', type: 'button', onclick: function () { ui.detail = !ui.detail; $('#d-detail').checked = ui.detail; render(); } }, ui.detail ? '점수 숨기기' : '팀 균형 점수 보기')));
     pool.appendChild(banner);
     if (!ui.confettiDone) { confetti(); ui.confettiDone = true; }
   }
 
   /* ---------- 동작 ---------- */
+  function revealNames() {
+    ui.revealNames = true; ui.revealAnim = true;
+    $('#d-reveal').checked = true;
+    render();
+    setTimeout(function () { ui.revealAnim = false; }, 50);
+  }
   function doPick(id, fromEl) {
     var cur = D.currentPick(draft);
     if (!cur) return;
     var r = D.pick(draft, id, prepared);
     if (!r.ok) { toast(r.error, true); return; }
+    ui.virtueFilter = null;
     persist();
     flyTo(fromEl, r.team, byId[id]);
     render();
     if (D.isDone(draft)) stopTimer(); else resetTimer();
   }
+  function flyLabel(p) { return p ? labelOf(p) : ''; }
   function revealNext() {
     var cur = D.currentPick(draft);
     if (!cur) { stopAutoplay(); return; }
@@ -322,7 +359,7 @@
       var board = $('.board[data-team="' + team + '"]');
       if (!fromEl || !board) return;
       var a = fromEl.getBoundingClientRect(), bh = $('.board-head', board).getBoundingClientRect();
-      var fly = h('div', { class: 'fly', text: (p && p.name) || '' });
+      var fly = h('div', { class: 'fly', text: flyLabel(p) });
       fly.style.left = a.left + 'px'; fly.style.top = a.top + 'px'; fly.style.width = a.width + 'px'; fly.style.height = a.height + 'px';
       document.body.appendChild(fly);
       setTimeout(function () {
@@ -339,7 +376,7 @@
     if (!id) { toast('고를 수 있는 선수가 없습니다.', true); return; }
     var el = $('#d-pool .card[data-id="' + id + '"]');
     doPick(id, el);
-    toast('자동 지명: ' + (byId[id].name || id));
+    toast('자동 지명: ' + labelOf(byId[id]));
   }
   function undo() {
     stopAutoplay();
@@ -399,6 +436,7 @@
 
   function bindStage() {
     $('#d-detail').addEventListener('change', function (e) { ui.detail = e.target.checked; render(); });
+    $('#d-reveal').addEventListener('change', function (e) { if (e.target.checked) revealNames(); else { ui.revealNames = false; ui.revealAnim = false; render(); } });
     $('#d-auto').addEventListener('click', autoPick);
     $('#d-undo').addEventListener('click', undo);
     $('#d-restart').addEventListener('click', restart);

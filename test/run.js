@@ -392,10 +392,13 @@ test('pick 모드: 풀은 같은 성별·체력 순 K명 묶음, 뱀 순서, 전
   assert.ok(st.pools.every(p => p.length <= 6));
   const byId = {}; base.forEach(s => byId[s.id] = s);
   st.pools.forEach(p => { const gs = new Set(p.map(id => byId[id].gender)); assert.strictEqual(gs.size, 1, '풀은 단일 성별'); });
-  // 첫 풀은 해당 성별 체력 상위 K명
+  // 풀은 같은 성별 체력 상위 2K명 구간 안에서 인성 평균이 비슷한 K명
   const g0 = byId[st.pools[0][0]].gender;
-  const topK = base.filter(s => s.gender === g0).sort((a, b) => b.papsPoints - a.papsPoints).slice(0, 6).map(s => s.id).sort();
-  assert.deepStrictEqual(st.pools[0].slice().sort(), topK);
+  const band = base.filter(s => s.gender === g0).sort((a, b) => b.papsPoints - a.papsPoints).slice(0, 12).map(s => s.id);
+  assert.ok(st.pools[0].every(id => band.includes(id)), '첫 풀은 체력 상위 2K 구간 안');
+  const vm = id => ['성실', '협동', '정의', '배려'].reduce((a, k) => a + byId[id].virtues[k], 0) / 4;
+  const pool0 = st.pools[0].map(vm), rest = band.filter(id => !st.pools[0].includes(id)).map(vm);
+  assert.ok(Math.min(...pool0) >= Math.max(...rest) - 1e-9, '첫 풀은 구간 내 인성 평균 상위');
   let guard = 0;
   while (!D.isDone(st) && guard++ < 100) {
     const c = D.candidates(st, base);
@@ -463,6 +466,14 @@ test('auto 모드: 편성 결과를 라운드별 공개 순서로, fillRemaining
   assert.strictEqual(st2.teams.flat().length, base.length); assert.strictEqual(st2.status, 'done');
   const pr = D.profiles(base);
   assert.ok(Object.values(pr).every(p => ['성실형', '협동형', '정의형', '배려형'].includes(p.type) && p.stars >= 1 && p.stars <= 5));
+  // 익명 코드: 전원 고유, 출석번호와 무관, 시드 재현
+  const an = D.initDraft(base, { mode: 'pick', teamCount: 6, seed: 4, anonymous: true });
+  const codes = Object.values(an.codes);
+  assert.strictEqual(new Set(codes).size, base.length);
+  assert.ok(codes.every(c => /^선수 \d{2}$/.test(c)));
+  const an2 = D.initDraft(base, { mode: 'pick', teamCount: 6, seed: 4, anonymous: true });
+  assert.deepStrictEqual(an.codes, an2.codes);
+  assert.ok(base.some(s => an.codes[s.id] !== '선수 ' + (s.no < 10 ? '0' : '') + s.no), '번호와 달라야 함');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

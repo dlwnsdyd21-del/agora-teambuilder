@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f172a">
   <title>팀 드래프트 — PAPS + 인성 AI 팀빌딩</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🏐%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/draft.css?v=1">
+  <link rel="stylesheet" href="css/draft.css?v=2">
 </head>
 <body class="draft">
   <header class="dbar">
@@ -17,6 +17,7 @@
       <span id="d-class" class="pill soft"></span>
     </div>
     <div class="dbar-right" id="d-controls" hidden>
+      <label class="switch" id="d-reveal-wrap" title="익명 드래프트 중 이름을 보여 줍니다 (교사용)" hidden><input type="checkbox" id="d-reveal"><span>이름 공개</span></label>
       <label class="switch" title="개인 점수(PAPS 총점·덕목 수치)를 화면에 표시합니다. 학생과 함께 볼 때는 끄는 것을 권장합니다."><input type="checkbox" id="d-detail"><span>상세 점수</span></label>
       <button id="d-auto" class="btn" type="button" title="현재 팀을 위해 균형에 맞는 선수를 자동으로 고릅니다">자동 지명</button>
       <button id="d-undo" class="btn ghost" type="button">되돌리기</button>
@@ -51,6 +52,7 @@
         <div class="setup-row">
           <label>팀 수 <input type="number" id="d-teamCount" min="2" max="12" step="1"></label>
           <label class="check"><input type="checkbox" id="d-gender"> 성별 균형</label>
+          <label class="check" id="d-anon-wrap" title="드래프트 중에는 이름·번호 대신 무작위 코드(선수 07)로 보이고, 완료 후 이름을 공개합니다"><input type="checkbox" id="d-anon"> 익명 드래프트</label>
           <label id="d-weight-wrap">크레딧 체력 비중 <input type="range" id="d-weight" min="0" max="1" step="0.1"> <b id="d-weight-val"></b></label>
           <label class="check"><input type="checkbox" id="d-timer"> 지명 시간 제한 <input type="number" id="d-timer-sec" min="10" max="180" step="5" value="30" style="width:4.5em"> 초</label>
         </div>
@@ -86,7 +88,7 @@
   <script src="js/scoring.js?v=4"></script>
   <script src="js/algorithm.js?v=4"></script>
   <script src="js/state.js?v=4"></script>
-  <script src="js/draft_logic.js?v=1"></script>
-  <script src="js/draft_ui.js?v=1"></script>
+  <script src="js/draft_logic.js?v=2"></script>
+  <script src="js/draft_ui.js?v=2"></script>
 </body>
 </html>
