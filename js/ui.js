@@ -51,7 +51,7 @@
     toastTimer = setTimeout(function () { el.hidden = true; }, isError ? 5000 : 2800);
   }
   function teamColor(t) { return TEAM_COLORS[t % TEAM_COLORS.length]; }
-  function teamName(t) { return (t + 1) + '팀'; }
+  function teamName(t) { var s = St.get(); return (s.teamNames && s.teamNames[t]) || ((t + 1) + '팀'); }
   function label(s) { return (s.no !== null && s.no !== undefined ? s.no + ' ' : '') + (s.name || '(이름 없음)'); }
   function keyOf(r) {
     if (r.no !== null && r.no !== undefined && r.no !== '') return 'n' + r.no;
@@ -423,6 +423,7 @@
     setIfIdle($('#opt-defaultGrade'), o.defaultGrade || 1);
     setIfIdle($('#opt-papsGivenType'), o.papsGivenType);
     setIfIdle($('#opt-seed'), o.seed);
+    $$('input[name=draftMode]').forEach(function (r) { r.checked = (o.draftMode || 'auto') === r.value; });
     var N = s.students.length, K = Math.max(1, o.teamCount | 0);
     $('#team-size-hint').textContent = N ? ('학생 ' + N + '명 → 팀당 ' + Math.floor(N / K) + (N % K ? '~' + Math.ceil(N / K) : '') + '명') : '';
     renderConstraints(s);
@@ -443,6 +444,10 @@
     $('#opt-defaultGrade').addEventListener('change', upd('defaultGrade', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : Math.min(6, v); }));
     $('#opt-papsGivenType').addEventListener('change', upd('papsGivenType'));
     $('#opt-seed').addEventListener('change', upd('seed', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : v; }));
+    $$('input[name=draftMode]').forEach(function (r) { r.addEventListener('change', function () { if (r.checked) St.update(function (s) { s.options.draftMode = r.value; }, { noUndo: true }); }); });
+    $('#btn-draft').addEventListener('click', function () { St.persistNow(); });
+    /* 드래프트 화면(다른 탭)에서 저장하면 즉시 반영 */
+    window.addEventListener('storage', function (e) { if (e.key === St.KEY) { St.load(); render(); } });
     $('#btn-build').addEventListener('click', function () { build(); });
     $('#btn-reshuffle').addEventListener('click', function () { reshuffle(); });
     $('#btn-reshuffle2').addEventListener('click', function () { reshuffle(); });
@@ -563,7 +568,8 @@
       h('span', { class: 'score', text: stats.equity }), h('span', { class: 'label', html: '공정성<br>점수' })));
     summary.appendChild(h('div', { class: 'kv' },
       h('div', null, '팀 ', h('b', { text: teams.length }), '개 · 학생 ', h('b', { text: prep.length }), '명',
-        s.manualEdits ? h('span', { class: 'badge warn', text: '수동 조정됨' }) : h('span', { class: 'badge ok', text: '시드 ' + s.result.seed })),
+        s.manualEdits ? h('span', { class: 'badge warn', text: '수동 조정됨' }) : h('span', { class: 'badge ok', text: '시드 ' + s.result.seed }),
+        s.result.source === 'draft' ? h('span', { class: 'badge', text: ({ auto: '교사 편성 공개', pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과' }) : null),
       h('div', { class: 'teacher-only' }, 'PAPS 팀 평균 범위 ', h('b', { text: fmt(stats.Dp, 1) }), '점 (허용 ' + Number(o.papsTolerance).toFixed(1) + '점, 100점 만점)',
         ' · 인성 편차 지수 ', h('b', { text: fmt(stats.Dc, 2) }), h('span', { class: 'hint', text: ' (4덕목 팀 평균 SD ÷ 학생 SD 합, 작을수록 균등)' })),
       h('div', null, '성별 균형 ' + (o.genderBalance ? '켬' : '끔') + ' · 팀 평균 PAPS 점수·4덕목이 서로 비슷할수록 공정한 편성입니다.')
@@ -730,7 +736,7 @@
       var teams = sanitizeTeams(s);
       if (!teams) { toast('먼저 팀을 편성하세요.', true); return; }
       var prep = prepare(s);
-      try { var f = X.exportTeamsXlsx(s, prep, teams, A.evaluateTeams(prep, teams), { includeScores: includeScores }); toast(f + ' 저장'); }
+      try { var f = X.exportTeamsXlsx(s, prep, teams, A.evaluateTeams(prep, teams), { includeScores: includeScores, teamNames: s.teamNames }); toast(f + ' 저장'); }
       catch (e) { toast(e.message, true); }
     }
     $('#btn-xlsx').addEventListener('click', function () { doXlsx(false); });

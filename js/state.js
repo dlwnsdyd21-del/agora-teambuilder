@@ -9,7 +9,8 @@
 
   var DEFAULT_OPTIONS = {
     teamCount: 6, genderBalance: true, papsTolerance: 4, includeBmi: true,
-    schoolLevel: '중', defaultGrade: 1, papsGivenType: 'score', seed: 1, together: [], apart: [], pinned: {}
+    schoolLevel: '중', defaultGrade: 1, papsGivenType: 'score', seed: 1, together: [], apart: [], pinned: {},
+    draftMode: 'auto', creditFitnessWeight: 0.6, draftTimerSec: 0
   };
 
   function newSession() {
@@ -18,9 +19,11 @@
       students: [],
       options: JSON.parse(JSON.stringify(DEFAULT_OPTIONS)),
       imports: { paps: null, survey: null },   // {fileName, sheetName, rowCount, mappingSummary}
-      result: null,                            // {teams:[[ids]], seed, log, builtAt}
+      result: null,                            // {teams:[[ids]], seed, log, builtAt, source?: 'auto'|'draft', mode?}
       manualEdits: false,
-      studentView: false
+      studentView: false,
+      teamNames: [],                           // 드래프트 화면에서 정한 팀 이름
+      draft: null                              // 진행 중/완료된 드래프트 상태 (draft_logic)
     };
   }
 
@@ -128,7 +131,7 @@
   }
 
   var api = {
-    DEFAULT_OPTIONS: DEFAULT_OPTIONS, newSession: newSession, load: load, get: get, update: update,
+    KEY: KEY, DEFAULT_OPTIONS: DEFAULT_OPTIONS, newSession: newSession, load: load, get: get, update: update,
     undo: undo, canUndo: canUndo, reset: reset, replace: replace, onChange: onChange, persistNow: persistNow,
     exportJSON: exportJSON, importJSON: importJSON,
     listSaved: listSaved, saveAs: saveAs, loadSaved: loadSaved, deleteSaved: deleteSaved

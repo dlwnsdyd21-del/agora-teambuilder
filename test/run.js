@@ -368,5 +368,102 @@ test('구글폼 응답 양식: 학번·객관식 글자 응답 → 번호·이�
   assert.ok(Q.VIRTUE_KEYS.every(k => v[k] >= 1 && v[k] <= 5));
 });
 
+console.log('\n[draft]');
+const D = require(path.join(__dirname, '..', 'js', 'draft_logic.js'));
+test('computeCosts/makeBudgets: 1~10 크레딧, 예산 합 = 비용 합', () => {
+  const costs = D.computeCosts(base, { fitnessWeight: 0.6 });
+  const vals = Object.values(costs);
+  assert.strictEqual(vals.length, base.length);
+  assert.ok(vals.every(c => Number.isInteger(c) && c >= 1 && c <= 10));
+  const top = base.slice().sort((a, b) => b.papsPoints - a.papsPoints)[0];
+  assert.ok(costs[top.id] >= 7, '체력 최상위는 비싸야 함: ' + costs[top.id]);
+  const slots = D.teamSlots(base.length, 6);
+  const budgets = D.makeBudgets(costs, base.map(s => s.id), slots);
+  assert.strictEqual(budgets.reduce((a, b) => a + b, 0), vals.reduce((a, b) => a + b, 0));
+  // 인원이 같은 팀끼리는 예산 차 ≤1, 인원이 많은 팀이 더 큰 예산
+  for (let i = 0; i < 6; i++) for (let j = 0; j < 6; j++) {
+    if (slots[i] === slots[j]) assert.ok(Math.abs(budgets[i] - budgets[j]) <= 1);
+    if (slots[i] > slots[j]) assert.ok(budgets[i] >= budgets[j]);
+  }
+});
+test('pick 모드: 풀은 같은 성별·체력 순 K명 묶음, 뱀 순서, 전원 지명, 인원·성별 균형', () => {
+  const st = D.initDraft(base, { mode: 'pick', teamCount: 6, genderBalance: true, seed: 3 });
+  assert.strictEqual(st.sequence.length, base.length);
+  assert.ok(st.pools.every(p => p.length <= 6));
+  const byId = {}; base.forEach(s => byId[s.id] = s);
+  st.pools.forEach(p => { const gs = new Set(p.map(id => byId[id].gender)); assert.strictEqual(gs.size, 1, '풀은 단일 성별'); });
+  // 첫 풀은 해당 성별 체력 상위 K명
+  const g0 = byId[st.pools[0][0]].gender;
+  const topK = base.filter(s => s.gender === g0).sort((a, b) => b.papsPoints - a.papsPoints).slice(0, 6).map(s => s.id).sort();
+  assert.deepStrictEqual(st.pools[0].slice().sort(), topK);
+  let guard = 0;
+  while (!D.isDone(st) && guard++ < 100) {
+    const c = D.candidates(st, base);
+    assert.ok(c.ids.length > 0 && !c.forced);
+    const cur = D.currentPick(st);
+    assert.ok(c.ids.every(id => st.pools[cur.pool].includes(id)));
+    const r = D.pick(st, c.ids[Math.floor(c.ids.length / 2)], base);
+    assert.ok(r.ok);
+  }
+  assert.ok(D.isDone(st) && st.status === 'done');
+  const all = st.teams.flat();
+  assert.strictEqual(new Set(all).size, base.length);
+  const sizes = st.teams.map(t => t.length);
+  assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, sizes);
+  for (const g of ['남', '여']) { const c = st.teams.map(t => t.filter(id => byId[id].gender === g).length); assert.ok(Math.max(...c) - Math.min(...c) <= 1, g + c); }
+  // 되돌리기
+  const before = st.picks.length; assert.ok(D.undo(st)); assert.strictEqual(st.picks.length, before - 1); assert.strictEqual(st.status, 'running');
+  assert.strictEqual(D.candidates(st, base).ids.length, 1);
+  // 남13·여14·미상1처럼 묶음이 남는 경우에도 팀 인원 차 ≤1
+  const odd = base.map((s, i) => Object.assign({}, s, { gender: i === 27 ? null : s.gender }));
+  const st2 = D.initDraft(odd, { mode: 'pick', teamCount: 6, genderBalance: true, seed: 9 });
+  const sz = st2.slots;
+  assert.ok(Math.max(...sz) - Math.min(...sz) <= 1, '슬롯 ' + sz);
+  assert.strictEqual(sz.reduce((a, b) => a + b, 0), odd.length);
+});
+test('credit 모드: 예산 초과 불가, 남은 인원 채울 수 있어야 함, 자동 지명으로 완주', () => {
+  const st = D.initDraft(base, { mode: 'credit', teamCount: 6, genderBalance: true, seed: 5, fitnessWeight: 0.6 });
+  assert.strictEqual(st.sequence.length, base.length);
+  const byId = {}; base.forEach(s => byId[s.id] = s);
+  let guard = 0, forced = 0;
+  while (!D.isDone(st) && guard++ < 100) {
+    const cur = D.currentPick(st);
+    const c = D.candidates(st, base);
+    assert.ok(c.ids.length > 0, '후보 없음');
+    if (c.forced) forced++;
+    // 비싼 선수를 고르려는 시도: 예산 넘으면 거부
+    const expensive = base.map(s => s.id).filter(id => !st.picks.some(p => p.id === id)).sort((a, b) => st.costs[b] - st.costs[a])[0];
+    const left = st.budgets[cur.team] - st.spent[cur.team];
+    if (!c.forced && st.costs[expensive] > left) assert.strictEqual(D.pick(st, expensive, base).ok, false);
+    const id = D.autoPick(st, base);
+    assert.ok(c.ids.includes(id));
+    assert.ok(D.pick(st, id, base).ok);
+  }
+  assert.ok(D.isDone(st));
+  for (let t = 0; t < 6; t++) assert.ok(st.spent[t] <= st.budgets[t] || st.picks.some(p => p.team === t && p.forced), '예산 초과 팀 ' + t);
+  const sizes = st.teams.map(t => t.length);
+  assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, sizes);
+  for (const g of ['남', '여']) { const c = st.teams.map(t => t.filter(id => byId[id].gender === g).length); assert.ok(Math.max(...c) - Math.min(...c) <= 1, g + c); }
+  const sm = D.summary(st);
+  assert.strictEqual(sm.totalBudget, Object.values(st.costs).reduce((a, b) => a + b, 0));
+  console.log('       (강제 지명 ' + forced + '회, 미사용 크레딧 ' + sm.leftover.reduce((a, b) => a + b, 0) + ' / ' + sm.totalBudget + ')');
+  assert.ok(forced <= 3, '강제 지명이 너무 잦음: ' + forced);
+});
+test('auto 모드: 편성 결과를 라운드별 공개 순서로, fillRemaining', () => {
+  const r = A.buildTeams(base, { teamCount: 6, seed: 1 });
+  const st = D.initDraft(base, { mode: 'auto', teamCount: 6, seed: 1, autoTeams: r.teams });
+  assert.strictEqual(st.sequence.length, base.length);
+  const first = st.sequence.slice(0, 6).map(s => s.team).sort();
+  assert.deepStrictEqual(first, [0, 1, 2, 3, 4, 5]);
+  while (!D.isDone(st)) assert.ok(D.pick(st, null, base).ok);
+  assert.deepStrictEqual(st.teams.map(t => t.slice().sort()), r.teams.map(t => t.slice().sort()));
+  const st2 = D.initDraft(base, { mode: 'credit', teamCount: 6, seed: 2 });
+  D.pick(st2, D.autoPick(st2, base), base);
+  D.fillRemaining(st2, base);
+  assert.strictEqual(st2.teams.flat().length, base.length); assert.strictEqual(st2.status, 'done');
+  const pr = D.profiles(base);
+  assert.ok(Object.values(pr).every(p => ['성실형', '협동형', '정의형', '배려형'].includes(p.type) && p.stars >= 1 && p.stars <= 5));
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
