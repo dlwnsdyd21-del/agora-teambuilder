@@ -7,7 +7,7 @@
   var Q = root.AgoraQuestions, S = root.AgoraScoring, A = root.AgoraAlgorithm, St = root.AgoraState, D = root.AgoraDraft;
   var VK = Q.VIRTUE_KEYS;
   var COLORS = ['#4f8cff', '#fb7185', '#2dd4bf', '#fbbf24', '#a78bfa', '#38bdf8', '#fb923c', '#4ade80', '#f472b6', '#94a3b8', '#2dd4bf', '#c084fc'];
-  var MODE_LABEL = { auto: '교사 편성 공개', pick: '팀별 드래프트', credit: '크레딧 드래프트' };
+  var MODE_LABEL = { auto: '교사 편성', pick: '팀별 드래프트', credit: '크레딧 드래프트' };
 
   /* ---------- DOM 도우미 ---------- */
   function $(sel, el) { return (el || document).querySelector(sel); }
@@ -93,7 +93,7 @@
     $('#d-weight-wrap').style.display = ui.mode === 'credit' ? '' : 'none';
     $('#d-anon-wrap').style.display = ui.mode === 'auto' ? 'none' : '';
     var warn = '';
-    if (ui.mode === 'auto' && !(session.result && session.result.teams)) warn = '교사 편성 결과가 아직 없어 시작할 때 현재 설정으로 자동 편성합니다.';
+    if (ui.mode === 'auto') warn = '시작하면 메인 3단계 설정(허용편차·제약 조건 포함)과 추첨 시드로 팀을 새로 편성해 한 명씩 공개합니다. 다른 조합을 원하면 🎲 순서 추첨을 다시 누르세요.';
     if (ui.mode !== 'auto' && prepared.some(function (p) { return !p.gender; }) && $('#d-gender').checked) warn = '성별이 없는 학생은 별도 풀(미상)로 지명됩니다. 메인 명단에서 성별을 채우면 더 정확합니다.';
     $('#d-setup-warn').textContent = warn;
   }
@@ -135,9 +135,10 @@
     var timerSec = $('#d-timer').checked ? Math.max(5, parseInt($('#d-timer-sec').value, 10) || 30) : 0;
     var autoTeams = null;
     if (ui.mode === 'auto') {
-      var res = session.result && session.result.teams && session.result.teams.length === K ? { teams: session.result.teams } : null;
-      if (!res) res = A.buildTeams(prepared, Object.assign({}, session.options, { teamCount: K, genderBalance: genderBalance, seed: ui.seed }));
+      /* 시작할 때마다 현재 설정(팀 수·성별 균형·허용편차·제약)과 추첨 시드로 새로 편성 */
+      var res = A.buildTeams(prepared, Object.assign({}, session.options, { teamCount: K, genderBalance: genderBalance, seed: ui.seed }));
       autoTeams = res.teams;
+      if (res.log && res.log.length) toast(res.log[0]);
     }
     var anonymous = ui.mode !== 'auto' && $('#d-anon').checked;
     draft = D.initDraft(prepared, { mode: ui.mode, teamCount: K, genderBalance: genderBalance, seed: ui.seed, fitnessWeight: weight, teamNames: names, autoTeams: autoTeams, anonymous: anonymous });

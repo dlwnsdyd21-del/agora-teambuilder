@@ -484,12 +484,9 @@
     $('#opt-papsGivenType').addEventListener('change', upd('papsGivenType'));
     $('#opt-seed').addEventListener('change', upd('seed', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : v; }));
     $$('input[name=draftMode]').forEach(function (r) { r.addEventListener('change', function () { if (r.checked) St.update(function (s) { s.options.draftMode = r.value; }, { noUndo: true }); }); });
-    $('#btn-draft').addEventListener('click', function () { St.persistNow(); });
-    /* 드래프트 화면(다른 탭)에서 저장하면 즉시 반영 */
+    $$('a[href="draft.html"]').forEach(function (a) { a.addEventListener('click', function () { St.persistNow(); }); });
+    /* 편성 화면(다른 탭)에서 저장하면 즉시 반영 */
     window.addEventListener('storage', function (e) { if (e.key === St.KEY) { St.load(); render(); } });
-    $('#btn-build').addEventListener('click', function () { build(); });
-    $('#btn-reshuffle').addEventListener('click', function () { reshuffle(); });
-    $('#btn-reshuffle2').addEventListener('click', function () { reshuffle(); });
   }
 
   function studentSelect(s, attrs) {
@@ -539,27 +536,21 @@
   }
 
   /* ============================================================
-   * 편성 실행
+   * 편성 (편성 화면 draft.html 에서 진행) — 여기서는 수동 조정만
    * ============================================================ */
   function build(seed) {
+    /* 개발·검증용: 편성 화면 없이 바로 자동 편성 */
     var s = St.get();
     if (!s.students.length) { toast('먼저 학생 자료를 불러오세요.', true); return; }
     var prep = prepare(s);
     var opt = Object.assign({}, s.options, { seed: seed === undefined ? s.options.seed : seed });
-    var t0 = Date.now();
     var res = A.buildTeams(prep, opt);
     St.update(function (ss) {
       ss.options.seed = opt.seed;
-      ss.result = { teams: res.teams, seed: res.seed, log: res.log, builtAt: new Date().toISOString(), meta: res.meta };
+      ss.result = { teams: res.teams, seed: res.seed, log: res.log, builtAt: new Date().toISOString(), meta: res.meta, source: 'auto' };
       ss.manualEdits = false;
     });
-    toast('팀 편성 완료 (공정성 ' + res.equity + '점, ' + (Date.now() - t0) + 'ms)');
-    var sec = $('#sec-result'); if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-  function reshuffle() {
-    var s = St.get();
-    if (!s.students.length) { toast('먼저 학생 자료를 불러오세요.', true); return; }
-    build((s.options.seed | 0) + 1);
+    toast('팀 편성 완료 (공정성 ' + res.equity + '점)');
   }
   function moveStudent(id, toTeam) {
     St.update(function (s) {
@@ -595,7 +586,7 @@
     $('#dnd-hint').textContent = '';
     var teams = sanitizeTeams(s);
     if (!teams) {
-      teamsEl.appendChild(h('div', { class: 'empty', text: s.studentView ? '아직 편성 결과가 없습니다.' : '3단계에서 "팀 편성하기"를 누르면 결과가 여기에 나타납니다.' }));
+      teamsEl.appendChild(h('div', { class: 'empty', text: s.studentView ? '아직 편성 결과가 없습니다.' : '3단계에서 편성 방식을 고르고 "편성 화면 열기"로 편성을 마치면 결과가 여기에 나타납니다.' }));
       return;
     }
     var stats = A.evaluateTeams(prep, teams);
@@ -608,7 +599,7 @@
     summary.appendChild(h('div', { class: 'kv' },
       h('div', null, '팀 ', h('b', { text: teams.length }), '개 · 학생 ', h('b', { text: prep.length }), '명',
         s.manualEdits ? h('span', { class: 'badge warn', text: '수동 조정됨' }) : h('span', { class: 'badge ok', text: '시드 ' + s.result.seed }),
-        s.result.source === 'draft' ? h('span', { class: 'badge', text: ({ auto: '교사 편성 공개', pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과' }) : null),
+        s.result.source === 'draft' ? h('span', { class: 'badge', text: ({ auto: '교사 편성', pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과' }) : null),
       h('div', { class: 'teacher-only' }, 'PAPS 팀 평균 범위 ', h('b', { text: fmt(stats.Dp, 1) }), '점 (허용 ' + Number(o.papsTolerance).toFixed(1) + '점, 100점 만점)',
         ' · 인성 편차 지수 ', h('b', { text: fmt(stats.Dc, 2) }), h('span', { class: 'hint', text: ' (4덕목 팀 평균 SD ÷ 학생 SD 합, 작을수록 균등)' })),
       h('div', null, '성별 균형 ' + (o.genderBalance ? '켬' : '끔') + ' · 팀 평균 PAPS 점수·4덕목이 서로 비슷할수록 공정한 편성입니다.')
@@ -803,7 +794,6 @@
     St.listSaved().forEach(function (e) { sel.appendChild(h('option', { value: e.label, text: e.label + ' (' + (e.updatedAt || '').slice(0, 10) + ')' })); });
     sel.value = cur && Array.prototype.some.call(sel.options, function (o) { return o.value === cur; }) ? cur : '';
     $('#btn-undo').disabled = !St.canUndo();
-    $('#btn-undo2').disabled = !St.canUndo();
   }
   function bindTopEvents() {
     $('#class-label').addEventListener('change', function (e) { St.update(function (s) { s.classLabel = e.target.value.trim(); }, { noUndo: true }); });
@@ -820,7 +810,6 @@
       e.target.value = '';
     });
     $('#btn-undo').addEventListener('click', function () { if (!St.undo()) toast('되돌릴 작업이 없습니다.'); });
-    $('#btn-undo2').addEventListener('click', function () { if (!St.undo()) toast('되돌릴 작업이 없습니다.'); });
     $('#btn-reset').addEventListener('click', function () {
       if (confirm('현재 자료·설정·결과를 모두 지우고 새로 시작할까요? (되돌리기 가능)')) { pending = { paps: null, survey: null }; clear($('#map-paps')); clear($('#map-survey')); St.reset(); }
     });

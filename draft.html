@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0f172a">
-  <title>팀 드래프트 — PAPS + 인성 AI 팀빌딩</title>
+  <title>팀 편성 — PAPS + 인성 AI 팀빌딩</title>
   <link rel="icon" type="image/png" href="assets/favicon-64.png">
   <link rel="stylesheet" href="css/draft.css?v=3">
 </head>
@@ -13,7 +13,7 @@
     <div class="dbar-left">
       <a href="index.html" class="back" title="메인 화면으로">← 메인</a>
       <span class="logo-chip" title="프로젝트 아고라 · AI융합교육 교사연구회"><img src="assets/logo-full.png" alt="프로젝트 아고라"></span>
-      <h1>팀 드래프트</h1>
+      <h1>팀 편성</h1>
       <span id="d-mode" class="pill"></span>
       <span id="d-class" class="pill soft"></span>
     </div>
@@ -31,13 +31,13 @@
     <!-- 준비 화면 -->
     <section id="d-setup" class="setup">
       <div class="setup-card">
-        <h2>드래프트 준비</h2>
+        <h2>편성 준비</h2>
         <p class="lead" id="d-setup-info"></p>
         <div class="mode-grid" id="d-mode-grid">
           <button class="mode-card" data-mode="auto" type="button">
             <span class="mode-icon">🧑‍🏫</span>
-            <b>교사 편성 공개</b>
-            <small>앱이 균형 있게 짠 팀을 라운드마다 한 명씩 드래프트처럼 공개합니다.</small>
+            <b>교사 편성</b>
+            <small>앱이 PAPS 1차·인성 2차로 균형 있게 짠 팀을 라운드마다 한 명씩 드래프트처럼 공개합니다.</small>
           </button>
           <button class="mode-card" data-mode="pick" type="button">
             <span class="mode-icon">🎯</span>
@@ -61,7 +61,7 @@
         <div class="setup-actions">
           <button id="d-lottery" class="btn" type="button">🎲 지명 순서 추첨</button>
           <div id="d-order" class="order"></div>
-          <button id="d-start" class="btn primary big" type="button">드래프트 시작 ▶</button>
+          <button id="d-start" class="btn primary big" type="button">편성 시작 ▶</button>
         </div>
         <p class="hint" id="d-setup-warn"></p>
       </div>
@@ -89,7 +89,7 @@
   <script src="js/scoring.js?v=4"></script>
   <script src="js/algorithm.js?v=4"></script>
   <script src="js/state.js?v=4"></script>
-  <script src="js/draft_logic.js?v=2"></script>
-  <script src="js/draft_ui.js?v=2"></script>
+  <script src="js/draft_logic.js?v=3"></script>
+  <script src="js/draft_ui.js?v=3"></script>
 </body>
 </html>

@@ -460,6 +460,12 @@ test('auto 모드: 편성 결과를 라운드별 공개 순서로, fillRemaining
   assert.deepStrictEqual(first, [0, 1, 2, 3, 4, 5]);
   while (!D.isDone(st)) assert.ok(D.pick(st, null, base).ok);
   assert.deepStrictEqual(st.teams.map(t => t.slice().sort()), r.teams.map(t => t.slice().sort()));
+  // 성별이 치우친 학급(남 13·여 14·미상 1)도 공개가 막히지 않아야 함
+  const odd = base.map((s, i) => Object.assign({}, s, { gender: i === 27 ? null : s.gender }));
+  const ro = A.buildTeams(odd, { teamCount: 6, seed: 3, genderBalance: true });
+  const so = D.initDraft(odd, { mode: 'auto', teamCount: 6, seed: 3, genderBalance: true, autoTeams: ro.teams });
+  let n = 0; while (!D.isDone(so)) { assert.ok(D.pick(so, null, odd).ok, '공개 실패 at ' + n); n++; }
+  assert.strictEqual(n, odd.length);
   const st2 = D.initDraft(base, { mode: 'credit', teamCount: 6, seed: 2 });
   D.pick(st2, D.autoPick(st2, base), base);
   D.fillRemaining(st2, base);

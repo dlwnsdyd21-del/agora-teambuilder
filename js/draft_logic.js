@@ -276,6 +276,8 @@
   function candidates(state, prepared) {
     var cur = currentPick(state);
     if (!cur) return { ids: [], forced: false, reasons: {} };
+    /* 교사 편성 공개: 정해진 순서의 선수를 그대로 공개 (정원·예산 검사 없음) */
+    if (state.mode === 'auto') return { ids: cur.id ? [cur.id] : [], forced: false, reasons: {} };
     var picked = pickedSet(state);
     var byId = {}; prepared.forEach(function (p) { byId[p.id] = p; });
     var reasons = {};

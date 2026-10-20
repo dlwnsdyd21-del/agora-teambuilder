@@ -112,7 +112,7 @@
 
     <!-- 3. 편성 설정 -->
     <section id="sec-settings" class="card teacher-only">
-      <h2>3. 편성 설정</h2>
+      <h2>3. 편성 설정 · 방식</h2>
       <div class="settings-grid">
         <label>팀 수
           <input type="number" id="opt-teamCount" min="1" max="20" step="1">
@@ -144,25 +144,20 @@
       </div>
 
       <div class="constraints">
-        <h3>제약 조건 <span class="hint">함께 넣기 · 떨어뜨리기 · 특정 팀 고정</span></h3>
+        <h3>제약 조건 <span class="hint">함께 넣기 · 떨어뜨리기 · 특정 팀 고정 — 교사 편성 방식에 적용됩니다</span></h3>
         <div id="constraints"></div>
       </div>
 
-      <div class="actions">
-        <button id="btn-build" class="btn primary big" type="button">팀 편성하기</button>
-        <button id="btn-reshuffle" class="btn big" type="button">다시 섞기</button>
-      </div>
-
       <div class="draft-launch">
-        <h3>드래프트 화면 <span class="hint">학생들과 함께 보는 발표용 화면에서 팀을 공개하거나 직접 지명합니다</span></h3>
+        <h3>편성 방식 <span class="hint">세 가지 중 하나를 고르고 편성 화면을 열면, 학생들과 함께 보는 발표용 화면에서 편성이 진행됩니다</span></h3>
         <div class="row wrap mode-pick">
-          <label class="radio"><input type="radio" name="draftMode" value="auto"> <b>교사 편성 공개</b> <span class="hint">위 "팀 편성하기" 결과를 한 명씩 공개</span></label>
-          <label class="radio"><input type="radio" name="draftMode" value="pick"> <b>팀별 드래프트</b> <span class="hint">체력이 비슷한 풀에서 팀이 직접 지명</span></label>
+          <label class="radio"><input type="radio" name="draftMode" value="auto"> <b>교사 편성</b> <span class="hint">앱이 위 설정으로 균형 있게 짠 팀을 한 명씩 공개</span></label>
+          <label class="radio"><input type="radio" name="draftMode" value="pick"> <b>팀별 드래프트</b> <span class="hint">체력·인성이 비슷한 풀에서 팀이 덕목 성향으로 직접 지명</span></label>
           <label class="radio"><input type="radio" name="draftMode" value="credit"> <b>크레딧 드래프트</b> <span class="hint">선수별 크레딧, 팀 예산 안에서 지명</span></label>
         </div>
-        <div class="row wrap" style="margin-top:.5rem">
-          <a id="btn-draft" class="btn primary" href="draft.html" target="_blank" rel="opener">🎬 드래프트 화면 열기 (새 창)</a>
-          <span class="hint">드래프트 결과는 저장하면 아래 4단계에 자동으로 나타납니다.</span>
+        <div class="row wrap" style="margin-top:.7rem">
+          <a id="btn-draft" class="btn primary big" href="draft.html" target="_blank" rel="opener">🎬 편성 화면 열기 (새 창)</a>
+          <span class="hint">편성을 마치고 저장하면 아래 4단계에 자동으로 나타납니다. 다시 편성하려면 편성 화면에서 "처음부터"를 누르세요.</span>
         </div>
       </div>
     </section>
@@ -172,8 +167,6 @@
       <div class="sec-head">
         <h2>4. 편성 결과 <span id="result-class" class="hint"></span></h2>
         <div class="row teacher-only no-print">
-          <button id="btn-reshuffle2" class="btn" type="button">다시 섞기</button>
-          <button id="btn-undo2" class="btn ghost" type="button">되돌리기</button>
           <button id="btn-print" class="btn ghost" type="button">인쇄</button>
         </div>
       </div>
@@ -234,7 +227,7 @@
   <script src="js/parse.js?v=3"></script>
   <script src="js/state.js?v=5"></script>
   <script src="js/export.js?v=3"></script>
-  <script src="js/ui.js?v=6"></script>
+  <script src="js/ui.js?v=7"></script>
   <script src="js/app.js?v=3"></script>
 </body>
 </html>
