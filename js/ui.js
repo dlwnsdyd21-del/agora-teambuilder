@@ -461,7 +461,6 @@
     setIfIdle($('#opt-schoolLevel'), o.schoolLevel || '중');
     setIfIdle($('#opt-defaultGrade'), o.defaultGrade || 1);
     setIfIdle($('#opt-papsGivenType'), o.papsGivenType);
-    setIfIdle($('#opt-seed'), o.seed);
     $$('input[name=draftMode]').forEach(function (r) { r.checked = (o.draftMode || 'auto') === r.value; });
     var N = s.students.length, K = Math.max(1, o.teamCount | 0);
     $('#team-size-hint').textContent = N ? ('학생 ' + N + '명 → 팀당 ' + Math.floor(N / K) + (N % K ? '~' + Math.ceil(N / K) : '') + '명') : '';
@@ -482,7 +481,6 @@
     $('#opt-schoolLevel').addEventListener('change', upd('schoolLevel'));
     $('#opt-defaultGrade').addEventListener('change', upd('defaultGrade', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : Math.min(6, v); }));
     $('#opt-papsGivenType').addEventListener('change', upd('papsGivenType'));
-    $('#opt-seed').addEventListener('change', upd('seed', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : v; }));
     $$('input[name=draftMode]').forEach(function (r) { r.addEventListener('change', function () { if (r.checked) St.update(function (s) { s.options.draftMode = r.value; }, { noUndo: true }); }); });
     $$('a[href="draft.html"]').forEach(function (a) { a.addEventListener('click', function () { St.persistNow(); }); });
     /* 편성 화면(다른 탭)에서 저장하면 즉시 반영 */
