@@ -21,6 +21,8 @@ button, input { font: inherit; }
 .dbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem 1.2rem; background: rgba(5, 10, 25, .7); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30; flex-wrap: wrap; }
 .dbar-left { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
 .dbar h1 { font-size: 1.15rem; letter-spacing: .02em; }
+.logo-chip { display: inline-flex; align-items: center; background: #fff; border-radius: 10px; padding: .25rem .6rem; }
+.logo-chip img { height: 30px; width: auto; display: block; }
 .back { color: var(--muted); text-decoration: none; font-size: .9rem; padding: .3rem .6rem; border: 1px solid var(--line); border-radius: 999px; }
 .back:hover { color: var(--ink); border-color: var(--muted); }
 .pill { font-size: .8rem; padding: .2rem .65rem; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; }
@@ -167,6 +169,7 @@ button, input { font: inherit; }
 @keyframes fall { to { transform: translateY(110vh) rotate(720deg); opacity: .2; } }
 
 @media (max-width: 760px) {
+  .logo-chip img { height: 22px; }
   .stage-head { grid-template-columns: 1fr; gap: .4rem; }
   .boards { grid-template-columns: repeat(2, 1fr); padding: .5rem .8rem 2rem; }
   .pool { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }

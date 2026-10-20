@@ -42,8 +42,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   padding: .8rem 1.2rem; background: var(--card); border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 20;
 }
-.brand { display: flex; align-items: center; gap: .6rem; flex: 1 1 320px; }
-.brand .logo { font-size: 1.8rem; }
+.brand { display: flex; align-items: center; gap: .9rem; flex: 1 1 360px; min-width: 0; }
+.brand .logo-img { height: 46px; width: auto; flex: none; }
+.brand .brand-text { border-left: 1px solid var(--line); padding-left: .9rem; min-width: 0; }
 .brand .sub { margin: 0; color: var(--muted); font-size: .82rem; }
 .topbar-actions { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
 .inline { display: inline-flex; align-items: center; gap: .3rem; font-size: .9rem; }
@@ -228,6 +229,8 @@ body.student-view main { padding-top: 1rem; }
 }
 @media (max-width: 640px) {
   .topbar { padding: .6rem .8rem; }
+  .brand .logo-img { height: 36px; }
+  .brand .sub { display: none; }
   main { padding: .4rem .8rem 2rem; }
   .card { padding: .9rem .8rem; }
   .import-grid { grid-template-columns: 1fr; }
