@@ -111,6 +111,11 @@ table.roster input:hover, table.roster select:hover { border-color: var(--line);
 table.roster input:focus, table.roster select:focus { border-color: var(--accent); background: #fff; outline: none; }
 table.roster input[type=text] { text-align: left; min-width: 6em; }
 table.roster td.num { font-variant-numeric: tabular-nums; }
+table.roster td.num > span:first-child { margin-right: .25rem; }
+table.roster input::placeholder { color: #b5bfcc; }
+table.roster .gcell { display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap; }
+table.roster .gcell select { width: auto; min-width: 3.4em; }
+table.roster .gcell select.inferred { border-color: #e2c97e; background: #fffaf0; }
 .badge { display: inline-block; font-size: .72rem; padding: .05rem .4rem; border-radius: 999px; background: #e9eef6; color: var(--muted); margin: 0 .1rem; }
 .badge.warn { background: var(--warn-bg); color: var(--warn-ink); }
 .badge.ok { background: #e3f6ec; color: var(--ok); }
@@ -209,6 +214,10 @@ body.student-view main { padding-top: 1rem; }
   .balance { margin-top: .6rem; }
 }
 
+/* 좁은 화면에서는 상단바가 여러 줄로 접히므로 고정하지 않음 (내용 가림 방지) */
+@media (max-width: 1100px) {
+  .topbar { position: static; }
+}
 @media (max-width: 640px) {
   .topbar { padding: .6rem .8rem; }
   main { padding: .4rem .8rem 2rem; }

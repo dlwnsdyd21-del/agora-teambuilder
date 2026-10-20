@@ -311,9 +311,10 @@
       var tr = h('tr', { dataset: { id: st.id } });
       tr.appendChild(h('td', null, h('input', { type: 'number', min: 1, 'data-field': 'no', value: st.no === null || st.no === undefined ? '' : st.no })));
       tr.appendChild(h('td', null, h('input', { type: 'text', 'data-field': 'name', value: st.name || '', placeholder: '이름' })));
-      tr.appendChild(h('td', null, h('select', { 'data-field': 'gender', title: st.genderInferred ? '나이스 점수와 기준표를 대조해 추정한 성별입니다. 틀리면 고쳐 주세요.' : '' },
-        h('option', { value: '', text: '–', selected: !st.gender }), h('option', { value: '남', text: '남', selected: st.gender === '남' }), h('option', { value: '여', text: '여', selected: st.gender === '여' })),
-        st.gender && st.genderInferred ? h('span', { class: 'badge', text: '추정', title: '나이스 점수와 기준표를 대조해 추정한 성별' }) : null));
+      tr.appendChild(h('td', null, h('div', { class: 'gcell' },
+        h('select', { 'data-field': 'gender', class: st.gender && st.genderInferred ? 'inferred' : '', title: st.genderInferred ? '나이스 점수와 기준표를 대조해 추정한 성별입니다. 틀리면 고쳐 주세요.' : '' },
+          h('option', { value: '', text: '–', selected: !st.gender }), h('option', { value: '남', text: '남', selected: st.gender === '남' }), h('option', { value: '여', text: '여', selected: st.gender === '여' })),
+        st.gender && st.genderInferred ? h('span', { class: 'badge', text: '추정', title: '나이스 점수와 기준표를 대조해 추정한 성별' }) : null)));
       /* PAPS */
       var papsTd = h('td', { class: 'num' });
       var d = p.papsDetail;
