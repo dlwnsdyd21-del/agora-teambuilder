@@ -126,7 +126,7 @@
         <label class="check"><input type="checkbox" id="opt-genderBalance"> 성별 균형 <span class="hint">각 팀 남·여 수 차이 1명 이하</span></label>
         <label class="adv">PAPS 허용편차
           <input type="range" id="opt-papsTolerance" min="1" max="15" step="0.5">
-          <span class="hint"><b id="tau-value"></b>점 (100점 만점) · 팀 평균 PAPS 점수의 최대-최소 범위를 이 안에 유지하고, 그 안에서 인성 편차를 최소화</span>
+          <span class="hint"><b id="tau-value"></b>점 (100점 만점) · 팀 평균 PAPS 점수의 최대-최소 범위를 이 안에 유지하고, 그 안에서 인성 편차를 최소화. 기본 3점. 1점 이하로 줄이면 팀 수가 많을 때 못 지킬 수 있습니다</span>
         </label>
         <label class="check adv"><input type="checkbox" id="opt-includeBmi"> PAPS 점수에 체지방(BMI) 영역 포함 <span class="hint">끄면 4영역을 100점 만점으로 환산</span></label>
         <label class="adv">학교급 · 학년 <span class="hint">PAPS 기준표 선택 (파일에 학년 열이 있으면 학생별로 적용)</span>
@@ -227,11 +227,11 @@
   <script src="js/questions.js?v=3"></script>
   <script src="js/paps_table.js?v=3"></script>
   <script src="js/scoring.js?v=3"></script>
-  <script src="js/algorithm.js?v=3"></script>
+  <script src="js/algorithm.js?v=4"></script>
   <script src="js/parse.js?v=3"></script>
-  <script src="js/state.js?v=5"></script>
-  <script src="js/export.js?v=3"></script>
-  <script src="js/ui.js?v=10"></script>
+  <script src="js/state.js?v=6"></script>
+  <script src="js/export.js?v=4"></script>
+  <script src="js/ui.js?v=11"></script>
   <script src="js/app.js?v=3"></script>
 </body>
 </html>

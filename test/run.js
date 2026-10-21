@@ -178,8 +178,12 @@ test('buildTeams: 28명 6팀, 크기·성별 균형, 재현성', () => {
   assert.notDeepStrictEqual(r1.teams, r3.teams, '다른 시드 → 다른 결과');
 });
 test('buildTeams: PAPS 팀 평균 범위가 허용편차(점) 안이고, 랜덤 배치보다 인성 편차가 작다', () => {
-  const r = A.buildTeams(base, { teamCount: 6, seed: 7, papsTolerance: 4 });
-  assert.ok(r.stats.Dp <= 4 + 1e-9, 'Dp=' + r.stats.Dp);
+  const r = A.buildTeams(base, { teamCount: 6, seed: 7, papsTolerance: 3 });
+  assert.ok(r.stats.Dp <= 3 + 1e-9, 'Dp=' + r.stats.Dp);
+  // 대체 인원 로그
+  const withMissing = base.map((s, i) => i < 3 ? Object.assign({}, s, { papsImputed: true }) : s);
+  const rm = A.buildTeams(withMissing, { teamCount: 6, seed: 7 });
+  assert.ok(rm.log.some(m => /PAPS 3명/.test(m)), '대체 인원 로그');
   assert.ok(r.stats.metrics.PAPS.teamMeans.every(m => m >= 0 && m <= 100));
   const rr = rng(99); let sum = 0;
   for (let k = 0; k < 100; k++) {

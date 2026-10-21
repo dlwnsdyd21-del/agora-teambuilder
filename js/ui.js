@@ -600,7 +600,11 @@
         s.result.source === 'draft' ? h('span', { class: 'badge', text: ({ auto: '교사 편성', pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과' }) : null),
       h('div', { class: 'teacher-only adv' }, 'PAPS 팀 평균 범위 ', h('b', { text: fmt(stats.Dp, 1) }), '점 (허용 ' + Number(o.papsTolerance).toFixed(1) + '점, 100점 만점)',
         ' · 인성 편차 지수 ', h('b', { text: fmt(stats.Dc, 2) }), h('span', { class: 'hint', text: ' (4덕목 팀 평균 SD ÷ 학생 SD 합, 작을수록 균등)' })),
-      h('div', null, '성별 균형 ' + (o.genderBalance ? '켬' : '끔') + ' · 팀 평균 PAPS 점수·4덕목이 서로 비슷할수록 공정한 편성입니다.')
+      h('div', null, '성별 균형 ' + (o.genderBalance ? '켬' : '끔') + ' · 팀 평균 PAPS 점수·4덕목이 서로 비슷할수록 공정한 편성입니다.'),
+      (function () {
+        var impP = prep.filter(function (p) { return p.papsImputed; }).length, impV = prep.filter(function (p) { return p.virtueImputed; }).length;
+        return (impP || impV) ? h('div', { class: 'teacher-only' }, h('span', { class: 'badge warn', text: '대체' }), ' PAPS ' + impP + '명 · 인성 ' + impV + '명은 자료가 없어 학급 평균으로 채웠습니다. 그만큼 균형 수치가 실제보다 좋게 보일 수 있습니다.') : null;
+      })()
     ));
     (s.result.log || []).forEach(function (m) { log.appendChild(h('div', { class: 'log adv', text: m })); });
 
@@ -611,8 +615,10 @@
         h('ul', { class: 'members' }, unIds.map(function (id) { return memberEl(byId[id], s, -1); }))));
     }
 
-    /* 팀 카드 */
-    teams.forEach(function (ids, t) {
+    /* 팀 카드 (번호순 — 체력 서열이 드러나지 않도록) */
+    var noOf = function (id) { var p = byId[id]; return p && p.no !== null && p.no !== undefined ? p.no : 1e9; };
+    teams.forEach(function (rawIds, t) {
+      var ids = rawIds.slice().sort(function (a, b) { return noOf(a) - noOf(b); });
       var tm = stats.teams[t];
       var card = h('div', { class: 'team', dataset: { team: t } },
         h('div', { class: 'team-head', style: 'background:' + teamColor(t) },

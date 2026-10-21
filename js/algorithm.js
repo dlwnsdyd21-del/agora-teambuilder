@@ -3,7 +3,7 @@
  *  1차: PAPS 서펜타인 드래프트 (성별 그룹별) → 팀 평균 PAPS 균등
  *  2차: 교환/이동 지역 탐색 → PAPS 범위를 허용편차(τ) 안에 유지하며
  *       4덕목(성실·협동·정의·배려) 팀 평균 편차 최소화
- *  J = 1000·max(0, Dp−τ) + Dc + 0.05·Dp   (PAPS·인성 합산 없음)
+ *  J = 1000·max(0, Dp−τ) + Dc + 0.01·Dp   (PAPS·인성 합산 없음)
  * ============================================================ */
 (function (root) {
   'use strict';
@@ -258,10 +258,11 @@
           if (pos >= K) { pos = K - 1; dir = -1; } else if (pos < 0) { pos = 0; dir = 1; }
           tries++;
         }
-        if (!placed) { // 쿼터가 꼬인 경우: 가장 여유 있는 팀
+        if (!placed) { // 쿼터가 꼬인 경우: 가장 여유 있는 팀 (성별 장부도 함께 차감)
           var bt = 0;
           for (var u = 1; u < K; u++) if (totalRoom[u] > totalRoom[bt]) bt = u;
-          totalRoom[bt]--; st.add(i, bt);
+          totalRoom[bt]--; if (genderBalance) room[students[i].g][bt]--;
+          st.add(i, bt);
         }
       });
       offset = (offset + 1) % K;
@@ -412,9 +413,11 @@
       var tm = sp.teamMeansV[k];
       metrics[k] = { teamMeans: tm, range: Math.max.apply(null, tm) - Math.min.apply(null, tm), sd: sdSample(tm), studentSd: studentSd[k], ratio: sp.ratios[k] };
     });
-    /* PAPS 범위는 학생 표준편차 대비(척도 무관), 인성은 4덕목 비율 합 기준 */
+    /* PAPS 범위는 학생 표준편차 대비(척도 무관), 인성은 4덕목 비율의 평균(각 덕목 팀평균 SD ÷ 학생 SD)
+     * → 두 항 모두 "1 = 학생 개인차만큼 팀이 다르다"에서 만점 감점 */
     var pRel = studentSd.PAPS > 1e-9 ? sp.Dp / studentSd.PAPS : 0;
-    var equity = Math.round(100 * (1 - 0.5 * Math.min(1, pRel) - 0.5 * Math.min(1, sp.Dc / 2.0)));
+    var cRel = sp.Dc / VK.length;
+    var equity = Math.round(100 * (1 - 0.5 * Math.min(1, pRel) - 0.5 * Math.min(1, cRel)));
     return { teams: teams, metrics: metrics, Dp: sp.Dp, Dc: sp.Dc, equity: Math.max(0, Math.min(100, equity)) };
   }
 
@@ -425,8 +428,8 @@
   }
 
   /* ---------- 공개 API ---------- */
-  /* papsTolerance: 팀 평균 PAPS 총점(100점 만점)의 최대-최소 허용 범위(점) */
-  var DEFAULTS = { teamCount: 6, genderBalance: true, papsTolerance: 4, seed: 1, restarts: 5, maxEvals: 20000, together: [], apart: [], pinned: {} };
+  /* papsTolerance: 팀 평균 PAPS 총점(100점 만점)의 최대-최소 허용 범위(점). 1점 이하는 팀 수가 많을 때 못 지킬 수 있음 */
+  var DEFAULTS = { teamCount: 6, genderBalance: true, papsTolerance: 3, seed: 1, restarts: 5, maxEvals: 20000, together: [], apart: [], pinned: {} };
 
   /*
    * students: [{id, name, gender, papsPoints(0~100), virtues:{성실,협동,정의,배려}}]
@@ -440,6 +443,9 @@
     var N = students.length;
     if (N === 0) return { teams: Array.from({ length: K }, function () { return []; }), stats: null, equity: 0, seed: options.seed, log: ['학생이 없습니다.'] };
     if (N < 2 * K) log.push('학생 수(' + N + ')가 팀 수의 2배보다 적어 팀당 인원이 매우 적습니다.');
+    var impP = (inputStudents || []).filter(function (s) { return s.papsImputed; }).length;
+    var impV = (inputStudents || []).filter(function (s) { return s.virtueImputed; }).length;
+    if (impP || impV) log.push('자료가 없어 학급 평균으로 채운 학생: PAPS ' + impP + '명 · 인성 ' + impV + '명 (균형 수치가 실제보다 좋게 보일 수 있음)');
     var C = buildConstraints(students, options);
     log = log.concat(C.log);
     var counts = { 남: 0, 여: 0, 미상: 0 };

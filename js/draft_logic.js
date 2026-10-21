@@ -175,9 +175,9 @@
       for (var r = 0; r < maxNeed; r++) serpentine(order, r).forEach(function (t) { if (needC[t] > r) state.sequence.push({ team: t, round: r }); });
     } else { /* auto: 공개 순서 */
       var teams = options.autoTeams || [];
-      var byId = {}; prepared.forEach(function (p) { byId[p.id] = p; });
       state.teams = Array.from({ length: K }, function () { return []; });
-      var sorted = teams.map(function (ids) { return ids.slice().sort(function (a, b) { return (byId[b] ? byId[b].papsPoints : 0) - (byId[a] ? byId[a].papsPoints : 0); }); });
+      /* 공개 순서는 팀 안에서 무작위(시드) — 체력 순으로 공개하면 서열이 드러남 */
+      var sorted = teams.map(function (ids) { return shuffle(ids.slice(), rng); });
       var maxLen = Math.max.apply(null, sorted.map(function (t) { return t.length; }).concat([0]));
       for (var rr = 0; rr < maxLen; rr++) serpentine(order, rr).forEach(function (t) { if (sorted[t] && sorted[t][rr]) state.sequence.push({ team: t, round: rr, id: sorted[t][rr] }); });
       state.slots = sorted.map(function (t) { return t.length; });

@@ -36,12 +36,21 @@
     var byId = {};
     prepared.forEach(function (s) { byId[s.id] = s; });
     var teamName = function (t) { return (opts.teamNames && opts.teamNames[t]) || (t + 1) + '팀'; };
+    /* 게시용 시트는 번호순 — 체력 순서가 드러나지 않도록 */
+    var byNo = function (ids) {
+      return ids.slice().sort(function (a, b) {
+        var x = byId[a] && byId[a].no !== null && byId[a].no !== undefined ? byId[a].no : 1e9;
+        var y = byId[b] && byId[b].no !== null && byId[b].no !== undefined ? byId[b].no : 1e9;
+        return x - y;
+      });
+    };
+    var pubTeams = teams.map(byNo);
 
     var wb = XLSX.utils.book_new();
 
-    /* 1) 팀 명단 (게시용: 점수 없음) */
+    /* 1) 팀 명단 (게시용: 점수 없음, 번호순) */
     var roster = [['팀', '번호', '이름', '성별']];
-    teams.forEach(function (ids, t) {
+    pubTeams.forEach(function (ids, t) {
       ids.forEach(function (id) {
         var s = byId[id]; if (!s) return;
         roster.push([teamName(t), s.no === null ? '' : s.no, s.name || '', s.gender || '']);
@@ -51,11 +60,11 @@
     ws1['!cols'] = [{ wch: 8 }, { wch: 6 }, { wch: 12 }, { wch: 6 }];
     XLSX.utils.book_append_sheet(wb, ws1, '팀 명단');
 
-    /* 2) 팀별 가로 명단 (게시용) */
-    var maxLen = Math.max.apply(null, teams.map(function (t) { return t.length; }).concat([0]));
-    var wide = [teams.map(function (_, t) { return teamName(t); })];
+    /* 2) 팀별 가로 명단 (게시용, 번호순) */
+    var maxLen = Math.max.apply(null, pubTeams.map(function (t) { return t.length; }).concat([0]));
+    var wide = [pubTeams.map(function (_, t) { return teamName(t); })];
     for (var i = 0; i < maxLen; i++) {
-      wide.push(teams.map(function (ids) { var s = byId[ids[i]]; return s ? ((s.no !== null ? s.no + ' ' : '') + (s.name || '')) : ''; }));
+      wide.push(pubTeams.map(function (ids) { var s = byId[ids[i]]; return s ? ((s.no !== null ? s.no + ' ' : '') + (s.name || '')) : ''; }));
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wide), '팀별 명단');
 
@@ -71,6 +80,8 @@
       bal.push(['학생 표준편차', '', '', '', r2(stats.metrics.PAPS.studentSd)].concat(VK.map(function (k) { return r2(stats.metrics[k].studentSd); })));
       bal.push([]);
       bal.push(['공정성 점수', stats.equity]);
+      var impP = prepared.filter(function (s) { return s.papsImputed; }).length, impV = prepared.filter(function (s) { return s.virtueImputed; }).length;
+      bal.push(['결측 대체(학급 평균으로 채움)', 'PAPS ' + impP + '명 · 인성 ' + impV + '명']);
       bal.push(['편성 시드', session.result ? session.result.seed : '']);
       bal.push(['PAPS 허용편차(점)', session.options.papsTolerance]);
       bal.push(['PAPS 점수 기준', root.AgoraPapsTable ? root.AgoraPapsTable.SOURCE : '']);
