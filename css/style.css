@@ -206,6 +206,11 @@ table.roster .gcell select.inferred { border-color: #e2c97e; background: #fffaf0
 .toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%); background: #1b2430; color: #fff; padding: .6rem 1rem; border-radius: 10px; font-size: .9rem; z-index: 50; box-shadow: var(--shadow); max-width: 90vw; }
 .toast.error { background: var(--danger); }
 
+/* ---------- 간단 보기 (기본) / 자세히 보기 ---------- */
+body.simple .adv { display: none !important; }
+body:not(.simple) .simple-only { display: none !important; }
+.inline-group { display: inline-flex; gap: .4rem; align-items: center; }
+
 /* ---------- 학생용 보기 ---------- */
 body.student-view .teacher-only { display: none !important; }
 body.student-view .member .sc, body.student-view .team-stats { display: none !important; }

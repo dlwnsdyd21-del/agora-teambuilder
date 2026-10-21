@@ -104,6 +104,7 @@
     $('#d-timer').checked = !!(o.draftTimerSec > 0);
     if (o.draftTimerSec > 0) $('#d-timer-sec').value = o.draftTimerSec;
     $('#d-anon').checked = o.draftAnonymous !== false;
+    try { $('#d-adv').open = localStorage.getItem('agora.ui.detail') === '1'; } catch (e) { /* ignore */ }
     var pinnedN = Object.keys(session.options.pinned || {}).filter(function (id) { return byId[id]; }).length;
     $('#d-setup-info').textContent = prepared.length ? ('학생 ' + prepared.length + '명 (남 ' + prepared.filter(function (p) { return p.gender === '남'; }).length + ' · 여 ' + prepared.filter(function (p) { return p.gender === '여'; }).length + ')' + (pinnedN ? ' · 팀 고정 ' + pinnedN + '명은 해당 팀에 미리 배치됩니다(실명 표시)' : '') + '. 방식을 고르고 시작하세요.') : '학생 자료가 없습니다. 메인 화면 1단계에서 자료를 불러온 뒤 다시 여세요.';
     $('#d-start').disabled = !prepared.length;

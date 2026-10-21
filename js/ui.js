@@ -302,7 +302,7 @@
       if (im) {
         var line = h('div', { class: 'ok' }, '✔ ' + im.fileName + (im.sheetName && im.sheetName !== 'CSV' && im.sheetName !== 'sheet1' ? ' / ' + im.sheetName : '') + ' · ' + im.rowCount + '명 반영 (현재 ' + cnt + '명)');
         if (lastImport[kind] && lastImport[kind].fileName === im.fileName) {
-          line.appendChild(h('button', { class: 'btn ghost small', type: 'button', style: 'margin-left:.5rem', title: '열 인식이 잘못됐다면 직접 고쳐 다시 반영', onclick: function () { pending[kind] = lastImport[kind]; renderMapping(kind); } }, '열 매핑 수정'));
+          line.appendChild(h('button', { class: 'btn ghost small adv', type: 'button', style: 'margin-left:.5rem', title: '열 인식이 잘못됐다면 직접 고쳐 다시 반영', onclick: function () { pending[kind] = lastImport[kind]; renderMapping(kind); } }, '열 매핑 수정'));
         }
         el.appendChild(line);
       }
@@ -598,11 +598,11 @@
       h('div', null, '팀 ', h('b', { text: teams.length }), '개 · 학생 ', h('b', { text: prep.length }), '명',
         s.manualEdits ? h('span', { class: 'badge warn', text: '수동 조정됨' }) : h('span', { class: 'badge ok', text: '시드 ' + s.result.seed }),
         s.result.source === 'draft' ? h('span', { class: 'badge', text: ({ auto: '교사 편성', pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과' }) : null),
-      h('div', { class: 'teacher-only' }, 'PAPS 팀 평균 범위 ', h('b', { text: fmt(stats.Dp, 1) }), '점 (허용 ' + Number(o.papsTolerance).toFixed(1) + '점, 100점 만점)',
+      h('div', { class: 'teacher-only adv' }, 'PAPS 팀 평균 범위 ', h('b', { text: fmt(stats.Dp, 1) }), '점 (허용 ' + Number(o.papsTolerance).toFixed(1) + '점, 100점 만점)',
         ' · 인성 편차 지수 ', h('b', { text: fmt(stats.Dc, 2) }), h('span', { class: 'hint', text: ' (4덕목 팀 평균 SD ÷ 학생 SD 합, 작을수록 균등)' })),
       h('div', null, '성별 균형 ' + (o.genderBalance ? '켬' : '끔') + ' · 팀 평균 PAPS 점수·4덕목이 서로 비슷할수록 공정한 편성입니다.')
     ));
-    (s.result.log || []).forEach(function (m) { log.appendChild(h('div', { class: 'log', text: m })); });
+    (s.result.log || []).forEach(function (m) { log.appendChild(h('div', { class: 'log adv', text: m })); });
 
     /* 미배정 */
     var unIds = unassignedIds(s, teams);
@@ -648,14 +648,14 @@
       tb.appendChild(h('tr', null, h('td', { class: 'tn' }, h('i', { class: 'dot', style: 'background:' + teamColor(t) }), teamName(t)), h('td', { text: tm.size }), h('td', { text: tm.male }), h('td', { text: tm.female }),
         h('td', { text: fmt(tm.meanPaps, 1) }), VK.map(function (k) { return h('td', { text: fmt(tm.meanVirtues[k], 2) }); })));
     });
-    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '범위(최대−최소)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.range, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].range, 2) }); })));
-    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '팀 평균 표준편차' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.sd, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].sd, 2) }); })));
-    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '학생 표준편차(참고)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.studentSd, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].studentSd, 2) }); })));
+    tb.appendChild(h('tr', { class: 'foot adv' }, h('td', { class: 'tn', text: '범위(최대−최소)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.range, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].range, 2) }); })));
+    tb.appendChild(h('tr', { class: 'foot adv' }, h('td', { class: 'tn', text: '팀 평균 표준편차' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.sd, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].sd, 2) }); })));
+    tb.appendChild(h('tr', { class: 'foot adv' }, h('td', { class: 'tn', text: '학생 표준편차(참고)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.studentSd, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].studentSd, 2) }); })));
     var ratioCell = function (mk) {
       var m = stats.metrics[mk], r = m.studentSd > 1e-9 ? m.range / m.studentSd : Infinity, v = verdict(r);
       return h('td', null, h('span', { style: 'color:' + v.color + ';font-weight:700' }, v.text), h('span', { class: 'hint', text: ' ' + (isFinite(r) ? r.toFixed(2) + '배' : '') }));
     };
-    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '균등 판정 (범위 ÷ 학생 편차)' }), h('td'), h('td'), h('td'), ratioCell('PAPS'), VK.map(ratioCell)));
+    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '균등 판정' }), h('td'), h('td'), h('td'), ratioCell('PAPS'), VK.map(ratioCell)));
     table.appendChild(tb);
     bal.appendChild(h('h3', { text: '팀 균형표' }));
     bal.appendChild(table);
@@ -833,10 +833,17 @@
     $('#btn-print2').addEventListener('click', function () { window.print(); });
   }
 
+  /* 간단/자세히 보기 (브라우저별 설정) */
+  var UI_DETAIL_KEY = 'agora.ui.detail';
+  function isDetail() { try { return localStorage.getItem(UI_DETAIL_KEY) === '1'; } catch (e) { return false; } }
+  function setDetail(on) { try { localStorage.setItem(UI_DETAIL_KEY, on ? '1' : '0'); } catch (e) { /* ignore */ } }
+
   function renderTop(s) {
     setIfIdle($('#class-label'), s.classLabel || '');
     $('#student-view-toggle').checked = !!s.studentView;
     document.body.classList.toggle('student-view', !!s.studentView);
+    $('#detail-toggle').checked = isDetail();
+    document.body.classList.toggle('simple', !isDetail());
     var sel = $('#saved-select');
     var cur = sel.value;
     clear(sel);
@@ -848,6 +855,7 @@
   function bindTopEvents() {
     $('#class-label').addEventListener('change', function (e) { St.update(function (s) { s.classLabel = e.target.value.trim(); }, { noUndo: true }); });
     $('#student-view-toggle').addEventListener('change', function (e) { selectedMember = null; St.update(function (s) { s.studentView = e.target.checked; }, { noUndo: true }); });
+    $('#detail-toggle').addEventListener('change', function (e) { setDetail(e.target.checked); render(); });
     $('#btn-save-class').addEventListener('click', function () {
       var lbl = $('#class-label').value.trim() || prompt('학급 이름을 입력하세요 (예: 1-3)');
       if (!lbl) return;
