@@ -651,13 +651,18 @@
     tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '범위(최대−최소)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.range, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].range, 2) }); })));
     tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '팀 평균 표준편차' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.sd, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].sd, 2) }); })));
     tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '학생 표준편차(참고)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.studentSd, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].studentSd, 2) }); })));
+    var ratioCell = function (mk) {
+      var m = stats.metrics[mk], r = m.studentSd > 1e-9 ? m.range / m.studentSd : Infinity, v = verdict(r);
+      return h('td', null, h('span', { style: 'color:' + v.color + ';font-weight:700' }, v.text), h('span', { class: 'hint', text: ' ' + (isFinite(r) ? r.toFixed(2) + '배' : '') }));
+    };
+    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '균등 판정 (범위 ÷ 학생 편차)' }), h('td'), h('td'), h('td'), ratioCell('PAPS'), VK.map(ratioCell)));
     table.appendChild(tb);
     bal.appendChild(h('h3', { text: '팀 균형표' }));
     bal.appendChild(table);
 
     /* 차트 */
-    charts.appendChild(dotPlot(stats));
-    charts.appendChild(radar(stats));
+    charts.appendChild(dotPlot(stats, prep, o.papsTolerance));
+    charts.appendChild(radar(stats, prep));
   }
 
   function memberEl(p, s, team) {
@@ -687,72 +692,119 @@
     return el;
   }
 
-  /* ---------- 차트: 지표별 팀 평균 점 그래프 ---------- */
-  function dotPlot(stats) {
+  /* ---------- 균등 판정 (팀 평균 범위 ÷ 학생 표준편차) ---------- */
+  var D2 = { 2: 1.128, 3: 1.693, 4: 2.059, 5: 2.326, 6: 2.534, 7: 2.704, 8: 2.847, 9: 2.970, 10: 3.078, 11: 3.173, 12: 3.258 }; // K개 정규 표본의 기대 범위
+  function verdict(ratio) {
+    if (!isFinite(ratio)) return { text: '–', color: '#8a97a8' };
+    if (ratio <= 0.25) return { text: '매우 균등', color: '#1e8e5a' };
+    if (ratio <= 0.5) return { text: '균등', color: '#2e86de' };
+    if (ratio <= 1.0) return { text: '보통', color: '#b7791f' };
+    return { text: '차이 큼', color: '#c0392b' };
+  }
+  function metricValues(prep, mk) { return prep.map(function (p) { return mk === 'PAPS' ? p.papsPoints : p.virtues[mk]; }); }
+  /* 무작위로 나눴을 때 기대되는 팀 평균의 최대−최소 범위 */
+  function randomExpectedRange(sd, K, N) {
+    var n = Math.max(1, N / Math.max(1, K));
+    return sd / Math.sqrt(n) * (D2[Math.min(12, Math.max(2, K))] || 2.5);
+  }
+
+  /* ---------- 차트: 지표별 팀 평균 분포 (학생 분포 축 고정) ---------- */
+  function dotPlot(stats, prep, tau) {
     var metrics = ['PAPS'].concat(VK);
-    var W = 640, rowH = 40, labelW = 92, right = 80, top = 18;
-    var H = top + metrics.length * rowH + 10;
+    var W = 700, rowH = 60, labelW = 72, right = 160, top = 14;
+    var H = top + metrics.length * rowH + 8;
+    var K = stats.teams.length, N = prep.length;
     var root_ = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img', 'aria-label': '지표별 팀 평균 분포' });
     metrics.forEach(function (mk, i) {
-      var m = stats.metrics[mk];
-      var y = top + i * rowH + rowH / 2;
-      var tm = m.teamMeans;
-      var center = tm.reduce(function (a, b) { return a + b; }, 0) / (tm.length || 1);
-      var maxDev = tm.reduce(function (a, b) { return Math.max(a, Math.abs(b - center)); }, 0);
-      var half = Math.max((m.studentSd || 0) * 0.5, maxDev * 1.15, 0.05);
+      var m = stats.metrics[mk], tm = m.teamMeans, sd = m.studentSd || 0;
+      var vals = metricValues(prep, mk);
+      var mean = vals.reduce(function (a, b) { return a + b; }, 0) / (vals.length || 1);
+      var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+      if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+      var pad = (hi - lo) * 0.05; lo -= pad; hi += pad;
+      var y = top + i * rowH + 28;
       var x0 = labelW, x1 = W - right;
-      var xOf = function (v) { return x0 + (v - center + half) / (2 * half) * (x1 - x0); };
-      root_.appendChild(svg('text', { x: 8, y: y + 4, 'font-size': 13, 'font-weight': 600, fill: '#1b2430' }, mk === 'PAPS' ? 'PAPS(점)' : mk));
-      root_.appendChild(svg('line', { x1: x0, x2: x1, y1: y, y2: y, stroke: '#dde3ec', 'stroke-width': 2 }));
-      [-half, 0, half].forEach(function (d) {
-        var x = xOf(center + d);
-        root_.appendChild(svg('line', { x1: x, x2: x, y1: y - 6, y2: y + 6, stroke: '#c5cedb' }));
-        root_.appendChild(svg('text', { x: x, y: y + 18, 'font-size': 9, fill: '#8a97a8', 'text-anchor': 'middle' }, (center + d).toFixed(mk === 'PAPS' ? 1 : 2)));
+      var xOf = function (v) { return x0 + (v - lo) / (hi - lo) * (x1 - x0); };
+      var dec = mk === 'PAPS' ? 1 : 2;
+      var half = mk === 'PAPS' ? (tau || 4) / 2 : 0.25 * sd;   // 균등 기준 띠 (학급 평균 ±)
+      var rr = randomExpectedRange(sd, K, N);                    // 무작위 예상 범위
+      var ratio = sd > 1e-9 ? m.range / sd : Infinity;
+      var vd = verdict(ratio);
+
+      root_.appendChild(svg('text', { x: 6, y: y + 4, 'font-size': 13, 'font-weight': 700, fill: '#1b2430' }, mk === 'PAPS' ? 'PAPS' : mk));
+      /* 균등 띠 */
+      root_.appendChild(svg('rect', { x: xOf(mean - half), y: y - 13, width: Math.max(2, xOf(mean + half) - xOf(mean - half)), height: 26, rx: 5, fill: '#1e8e5a', 'fill-opacity': 0.13 }));
+      /* 축 + 양끝 값 */
+      root_.appendChild(svg('line', { x1: x0, x2: x1, y1: y, y2: y, stroke: '#d5dce8', 'stroke-width': 2 }));
+      root_.appendChild(svg('text', { x: x0, y: y + 23, 'font-size': 9, fill: '#8a97a8', 'text-anchor': 'start' }, (lo + pad).toFixed(dec)));
+      root_.appendChild(svg('text', { x: x1, y: y + 23, 'font-size': 9, fill: '#8a97a8', 'text-anchor': 'end' }, (hi - pad).toFixed(dec)));
+      /* 학생 개개인 (회색) */
+      vals.forEach(function (v, j) {
+        root_.appendChild(svg('circle', { cx: xOf(v), cy: y + ((j % 3) - 1) * 3.5, r: 2.4, fill: '#64748b', 'fill-opacity': 0.35 }));
       });
-      var lo = Math.min.apply(null, tm), hi = Math.max.apply(null, tm);
-      root_.appendChild(svg('rect', { x: xOf(lo), y: y - 9, width: Math.max(2, xOf(hi) - xOf(lo)), height: 18, rx: 4, fill: '#1f6feb', 'fill-opacity': 0.08 }));
+      /* 학급 평균 */
+      root_.appendChild(svg('line', { x1: xOf(mean), x2: xOf(mean), y1: y - 16, y2: y + 16, stroke: '#1e8e5a', 'stroke-width': 1.5, 'stroke-dasharray': '3 2' }));
+      root_.appendChild(svg('text', { x: xOf(mean), y: y - 19, 'font-size': 9, fill: '#1e8e5a', 'text-anchor': 'middle' }, '학급 평균 ' + mean.toFixed(dec)));
+      /* 무작위 예상 범위 (점선 괄호) */
+      var rx0 = xOf(mean - rr / 2), rx1 = xOf(mean + rr / 2), ry = y + 16;
+      root_.appendChild(svg('line', { x1: rx0, x2: rx1, y1: ry, y2: ry, stroke: '#b7791f', 'stroke-width': 1.2, 'stroke-dasharray': '4 3' }));
+      root_.appendChild(svg('line', { x1: rx0, x2: rx0, y1: ry - 3, y2: ry + 3, stroke: '#b7791f' }));
+      root_.appendChild(svg('line', { x1: rx1, x2: rx1, y1: ry - 3, y2: ry + 3, stroke: '#b7791f' }));
+      /* 팀 평균 */
       tm.forEach(function (v, t) {
         var c = svg('circle', { cx: xOf(v), cy: y, r: 6.5, fill: teamColor(t), stroke: '#fff', 'stroke-width': 1.5 });
-        c.appendChild(svg('title', null, teamName(t) + ' ' + mk + ' 평균 ' + v.toFixed(mk === 'PAPS' ? 1 : 2)));
+        c.appendChild(svg('title', null, teamName(t) + ' ' + mk + ' 평균 ' + v.toFixed(dec) + ' (학급 평균과의 차이 ' + (v - mean >= 0 ? '+' : '') + (v - mean).toFixed(dec) + ')'));
         root_.appendChild(c);
       });
-      root_.appendChild(svg('text', { x: W - 6, y: y + 4, 'font-size': 11, fill: '#5d6b7c', 'text-anchor': 'end' }, '범위 ' + m.range.toFixed(mk === 'PAPS' ? 1 : 2)));
+      /* 오른쪽: 수치 + 판정 */
+      root_.appendChild(svg('text', { x: W - 6, y: y - 4, 'font-size': 10.5, fill: '#5d6b7c', 'text-anchor': 'end' },
+        '범위 ' + m.range.toFixed(dec) + (mk === 'PAPS' ? '점' : '') + ' · 학생 편차의 ' + (isFinite(ratio) ? ratio.toFixed(2) : '–') + '배'));
+      var pw = vd.text.length * 11 + 14;
+      root_.appendChild(svg('rect', { x: W - 6 - pw, y: y + 3, width: pw, height: 16, rx: 8, fill: vd.color, 'fill-opacity': 0.14 }));
+      root_.appendChild(svg('text', { x: W - 6 - pw / 2, y: y + 15, 'font-size': 10.5, 'font-weight': 700, fill: vd.color, 'text-anchor': 'middle' }, vd.text));
     });
-    var box = h('div', { class: 'chart' }, h('h4', { text: '지표별 팀 평균 분포 (점이 모여 있을수록 균등)' }), root_,
-      h('div', { class: 'legend' }, stats.teams.map(function (_, t) { return h('span', null, h('i', { style: 'background:' + teamColor(t) }), teamName(t)); })));
+    var box = h('div', { class: 'chart' }, h('h4', { text: '지표별 팀 평균 분포 (팀 점이 초록 띠 안에 모일수록 균등)' }), root_,
+      h('div', { class: 'legend' }, stats.teams.map(function (_, t) { return h('span', null, h('i', { style: 'background:' + teamColor(t) }), teamName(t)); })),
+      h('div', { class: 'legend' },
+        h('span', null, h('i', { style: 'background:#64748b;opacity:.5' }), '학생 개개인'),
+        h('span', null, h('i', { style: 'background:#1e8e5a;opacity:.35;border-radius:3px' }), '균등 기준 띠 = 학급 평균 ± 학생 편차 0.25배 (PAPS는 허용편차)'),
+        h('span', null, h('i', { style: 'background:none;border-top:2px dashed #b7791f;border-radius:0;height:0;width:1.2em' }), '무작위로 나눌 때 예상되는 팀 평균 범위'),
+        h('span', { text: '판정: 범위가 학생 편차의 0.25배 이하 매우 균등 · 0.5배 이하 균등 · 1배 이하 보통 · 그 이상 차이 큼' })));
     return box;
   }
 
-  /* ---------- 차트: 4덕목 레이더 ---------- */
-  function radar(stats) {
-    var size = 320, cx = size / 2, cy = size / 2 + 6, R = 112;
-    var all = [];
-    VK.forEach(function (k) { all = all.concat(stats.metrics[k].teamMeans); });
-    var lo = Math.max(1, Math.floor((Math.min.apply(null, all) - 0.15) * 10) / 10);
-    var hi = Math.min(5, Math.ceil((Math.max.apply(null, all) + 0.15) * 10) / 10);
-    if (hi - lo < 0.4) { var mid = (hi + lo) / 2; lo = Math.max(1, mid - 0.2); hi = Math.min(5, mid + 0.2); }
+  /* ---------- 차트: 4덕목 레이더 (학급 평균 중심, 학생 표준편차 단위 고정 축) ---------- */
+  function radar(stats, prep) {
+    var size = 320, cx = size / 2, cy = size / 2 + 6, R = 112, ZMAX = 1.5;
+    var means = {}, sds = {};
+    VK.forEach(function (k) { var v = metricValues(prep, k); means[k] = v.reduce(function (a, b) { return a + b; }, 0) / (v.length || 1); sds[k] = stats.metrics[k].studentSd || 1e-9; });
     var root_ = svg('svg', { viewBox: '0 0 ' + size + ' ' + (size + 10), role: 'img', 'aria-label': '4덕목 팀 평균 레이더' });
     var ang = function (i) { return -Math.PI / 2 + i * Math.PI / 2; };
-    var pt = function (i, v) { var r = R * (v - lo) / (hi - lo); return [cx + r * Math.cos(ang(i)), cy + r * Math.sin(ang(i))]; };
-    [0.25, 0.5, 0.75, 1].forEach(function (f) {
-      var v = lo + (hi - lo) * f;
-      var pts = VK.map(function (_, i) { return pt(i, v).join(','); }).join(' ');
-      root_.appendChild(svg('polygon', { points: pts, fill: 'none', stroke: '#e3e8f0' }));
-      root_.appendChild(svg('text', { x: cx + 4, y: pt(0, v)[1] - 2, 'font-size': 9, fill: '#8a97a8' }, v.toFixed(2)));
+    var zOf = function (k, v) { return Math.max(-ZMAX, Math.min(ZMAX, (v - means[k]) / sds[k])); };
+    var ptZ = function (i, z) { var r = R * (z + ZMAX) / (2 * ZMAX); return [cx + r * Math.cos(ang(i)), cy + r * Math.sin(ang(i))]; };
+    var ring = function (z) { return VK.map(function (_, i) { return ptZ(i, z).join(','); }).join(' '); };
+    /* 균등 영역: 학급 평균 ± 0.25 SD */
+    root_.appendChild(svg('polygon', { points: ring(0.25), fill: '#1e8e5a', 'fill-opacity': 0.14, stroke: 'none' }));
+    root_.appendChild(svg('polygon', { points: ring(-0.25), fill: '#ffffff', 'fill-opacity': 0.9, stroke: 'none' }));
+    [-1, -0.5, 0.5, 1, ZMAX].forEach(function (z) { root_.appendChild(svg('polygon', { points: ring(z), fill: 'none', stroke: '#e3e8f0' })); });
+    root_.appendChild(svg('polygon', { points: ring(0), fill: 'none', stroke: '#1e8e5a', 'stroke-width': 1.5, 'stroke-dasharray': '4 3' }));
+    [[0, '학급 평균'], [1, '+1 SD'], [-1, '−1 SD']].forEach(function (lbl) {
+      root_.appendChild(svg('text', { x: cx + 5, y: ptZ(0, lbl[0])[1] - 2, 'font-size': 9, fill: lbl[0] === 0 ? '#1e8e5a' : '#8a97a8' }, lbl[1]));
     });
     VK.forEach(function (k, i) {
-      var p = pt(i, hi);
+      var p = ptZ(i, ZMAX);
       root_.appendChild(svg('line', { x1: cx, y1: cy, x2: p[0], y2: p[1], stroke: '#dde3ec' }));
-      var lx = cx + (R + 18) * Math.cos(ang(i)), ly = cy + (R + 18) * Math.sin(ang(i));
+      var lx = cx + (R + 20) * Math.cos(ang(i)), ly = cy + (R + 20) * Math.sin(ang(i));
       root_.appendChild(svg('text', { x: lx, y: ly + 4, 'font-size': 12, 'font-weight': 600, fill: '#1b2430', 'text-anchor': 'middle' }, k));
     });
     stats.teams.forEach(function (tm, t) {
-      var pts = VK.map(function (k, i) { return pt(i, tm.meanVirtues[k]).join(','); }).join(' ');
+      var pts = VK.map(function (k, i) { return ptZ(i, zOf(k, tm.meanVirtues[k])).join(','); }).join(' ');
       var poly = svg('polygon', { points: pts, fill: teamColor(t), 'fill-opacity': 0.06, stroke: teamColor(t), 'stroke-width': 2 });
-      poly.appendChild(svg('title', null, teamName(t) + ' ' + VK.map(function (k) { return k + ' ' + tm.meanVirtues[k].toFixed(2); }).join(', ')));
+      poly.appendChild(svg('title', null, teamName(t) + ' ' + VK.map(function (k) { return k + ' ' + tm.meanVirtues[k].toFixed(2) + ' (' + (zOf(k, tm.meanVirtues[k]) >= 0 ? '+' : '') + zOf(k, tm.meanVirtues[k]).toFixed(2) + ' SD)'; }).join(', ')));
       root_.appendChild(poly);
     });
-    return h('div', { class: 'chart' }, h('h4', { text: '4덕목 팀 평균 레이더 (겹칠수록 균등)' }), root_);
+    return h('div', { class: 'chart' }, h('h4', { text: '4덕목 팀 평균 레이더 (초록 점선 = 학급 평균, 띠 안이면 균등)' }), root_,
+      h('div', { class: 'legend' }, h('span', { text: '축은 학급 평균을 중심으로 학생 표준편차(SD) 단위로 고정되어, 학급이 달라도 같은 모양이면 같은 뜻입니다.' })));
   }
 
   /* ============================================================
