@@ -46,6 +46,7 @@ button, input { font: inherit; }
 .setup-card { width: min(1000px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 1.6rem 1.8rem; backdrop-filter: blur(6px); animation: rise .5s ease-out; }
 .setup-card h2 { font-size: 1.5rem; margin-bottom: .3rem; }
 .lead { color: var(--muted); margin: 0 0 1.2rem; }
+.missing-warn { margin: -.6rem 0 1.1rem; padding: .55rem .8rem; border-radius: 10px; background: rgba(251, 191, 36, .14); border: 1px solid rgba(251, 191, 36, .45); color: #fde68a; font-size: .92rem; }
 .mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .9rem; margin-bottom: 1.2rem; }
 .mode-card { text-align: left; background: var(--panel); border: 2px solid var(--line); border-radius: 16px; padding: 1rem 1.1rem; color: var(--ink); cursor: pointer; display: grid; gap: .35rem; transition: border-color .15s, transform .15s, background .15s; }
 .mode-card:hover { transform: translateY(-2px); background: var(--panel2); }

@@ -464,6 +464,14 @@
     $$('input[name=draftMode]').forEach(function (r) { r.checked = (o.draftMode || 'auto') === r.value; });
     var N = s.students.length, K = Math.max(1, o.teamCount | 0);
     $('#team-size-hint').textContent = N ? ('학생 ' + N + '명 → 팀당 ' + Math.floor(N / K) + (N % K ? '~' + Math.ceil(N / K) : '') + '명') : '';
+    /* 자료 누락 경고 */
+    var missV = prep.filter(function (p) { return p.virtueImputed; }).length, missP = prep.filter(function (p) { return p.papsImputed; }).length;
+    var mw = $('#missing-warn');
+    if (mw) {
+      var ratio = N ? Math.max(missV, missP) / N : 0;
+      mw.hidden = !(missV || missP);
+      mw.textContent = (missV || missP) ? ('⚠ 자료가 없어 학급 평균으로 채운 학생: 인성 ' + missV + '명 · PAPS ' + missP + '명 (' + Math.round(ratio * 100) + '%). ' + (ratio >= 0.2 ? '누락이 많으면 균형 수치가 실제보다 좋게 보입니다. 편성 전에 설문을 다시 받거나, 명단에서 해당 학생을 팀 고정으로 직접 배치하는 것을 권장합니다.' : '해당 학생은 어느 팀에 가도 균형 수치를 바꾸지 않습니다.')) : '';
+    }
     renderConstraints(s);
   }
   function bindSettingsEvents() {
@@ -482,7 +490,15 @@
     $('#opt-defaultGrade').addEventListener('change', upd('defaultGrade', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : Math.min(6, v); }));
     $('#opt-papsGivenType').addEventListener('change', upd('papsGivenType'));
     $$('input[name=draftMode]').forEach(function (r) { r.addEventListener('change', function () { if (r.checked) St.update(function (s) { s.options.draftMode = r.value; }, { noUndo: true }); }); });
-    $$('a[href="draft.html"]').forEach(function (a) { a.addEventListener('click', function () { St.persistNow(); }); });
+    /* 편성 화면은 이름 붙인 창 하나로 열어 창이 쌓이지 않게 하고, 저장 후 스스로 닫을 수 있게 함 */
+    $$('a[href="draft.html"]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        St.persistNow();
+        var w = null;
+        try { w = window.open('draft.html', 'agora-draft'); } catch (err) { w = null; }
+        if (w) { e.preventDefault(); try { w.focus(); } catch (err) { /* ignore */ } }
+      });
+    });
     /* 편성 화면(다른 탭)에서 저장하면 즉시 반영 */
     window.addEventListener('storage', function (e) { if (e.key === St.KEY) { St.load(); render(); } });
   }

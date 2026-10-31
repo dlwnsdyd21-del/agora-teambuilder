@@ -106,6 +106,14 @@
     $('#d-anon').checked = o.draftAnonymous !== false;
     try { $('#d-adv').open = localStorage.getItem('agora.ui.detail') === '1'; } catch (e) { /* ignore */ }
     var pinnedN = Object.keys(session.options.pinned || {}).filter(function (id) { return byId[id]; }).length;
+    /* 자료 누락 경고 (학급 평균으로 대체된 학생이 많으면 균등화의 의미가 줄어듦) */
+    var missV = prepared.filter(function (p) { return p.virtueImputed; }).length, missP = prepared.filter(function (p) { return p.papsImputed; }).length;
+    var warnEl = $('#d-missing-warn');
+    if (warnEl) {
+      var ratio = prepared.length ? Math.max(missV, missP) / prepared.length : 0;
+      warnEl.hidden = !(missV || missP);
+      warnEl.textContent = (missV || missP) ? ('⚠ 자료가 없어 학급 평균으로 채운 학생: 인성 ' + missV + '명 · PAPS ' + missP + '명 (' + Math.round(ratio * 100) + '%). ' + (ratio >= 0.2 ? '누락이 많아 균형 수치가 실제보다 좋게 보입니다. 설문 재실시 또는 수동 배치를 권장합니다.' : '해당 학생은 어느 팀에 가도 균형 수치를 바꾸지 않습니다.')) : '';
+    }
     $('#d-setup-info').textContent = prepared.length ? ('학생 ' + prepared.length + '명 (남 ' + prepared.filter(function (p) { return p.gender === '남'; }).length + ' · 여 ' + prepared.filter(function (p) { return p.gender === '여'; }).length + ')' + (pinnedN ? ' · 팀 고정 ' + pinnedN + '명은 해당 팀에 미리 배치됩니다(실명 표시)' : '') + '. 방식을 고르고 시작하세요.') : '학생 자료가 없습니다. 메인 화면 1단계에서 자료를 불러온 뒤 다시 여세요.';
     $('#d-start').disabled = !prepared.length;
     renderNames(); renderOrder(); updateModeUI();
@@ -201,6 +209,9 @@
     if (cur) {
       now.appendChild(h('span', { class: 'team-dot', style: 'background:' + color(cur.team) }));
       now.appendChild(h('span', { text: draft.teamNames[cur.team] + (draft.mode === 'auto' ? ' 선수 공개' : ' 지명 차례') }));
+      /* 미리 배치된(고정) 학생이 있으면 지명 주체로 함께 표시 */
+      var fixed = (draft.prePlaced || []).filter(function (id) { return draft.pinned[id] === cur.team && byId[id]; }).map(function (id) { return byId[id].name || id; });
+      if (fixed.length && draft.mode !== 'auto') now.appendChild(h('span', { class: 'sub', text: '📌 ' + fixed.join(', ') + ' 지명' }));
       if (draft.mode === 'credit') now.appendChild(h('span', { class: 'sub', text: '남은 크레딧 ' + (draft.budgets[cur.team] - draft.spent[cur.team]) + ' / 남은 자리 ' + D.remainingSlots(draft, cur.team) }));
       else if (draft.mode === 'pick') now.appendChild(h('span', { class: 'sub', text: '풀 ' + (cur.pool + 1) + '/' + draft.pools.length + ' · 체력·인성 수준이 비슷한 ' + draft.pools[cur.pool].length + '명 중 원하는 덕목 성향을 고르세요' }));
     } else now.appendChild(h('span', { text: '🎉 드래프트 완료!' }));
@@ -293,10 +304,13 @@
       }
       var ul = h('ul', { class: 'members' });
       var lastPick = draft.picks.length ? draft.picks[draft.picks.length - 1] : null;
-      draft.teams[t].forEach(function (id, i) {
+      /* 진행 중에는 지명 순서, 완료 후에는 번호순 (지명 순서 = 체력 순이 드러나지 않도록) */
+      var memberIds = draft.teams[t].slice();
+      if (D.isDone(draft)) memberIds.sort(function (a, b) { var x = byId[a] && byId[a].no !== null ? byId[a].no : 1e9, y = byId[b] && byId[b].no !== null ? byId[b].no : 1e9; return x - y; });
+      memberIds.forEach(function (id, i) {
         var p = byId[id], pr = prof[id];
         if (!p) return;
-        var isNew = lastPick && lastPick.id === id;
+        var isNew = lastPick && lastPick.id === id && !D.isDone(draft);
         var pinnedHere = isPinned(p);
         ul.appendChild(h('li', { class: 'member' + (isNew ? ' new' : '') + (ui.revealAnim && !pinnedHere ? ' unmask' : '') + (pinnedHere ? ' pinned' : ''), style: 'animation-delay:' + (ui.revealAnim ? (t * 120 + i * 90) : (isNew ? 0 : i * 40)) + 'ms', title: (pinnedHere ? '팀 고정 (미리 배치)' : '') + (ui.detail ? ('\nPAPS ' + fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' ')) : '') },
           h('span', { class: 'mini' }, jersey(avatarText(p), color(t), 'small')),
@@ -428,7 +442,17 @@
     }, { noUndo: true });
     St.persistNow();
     toast('저장했습니다. 메인 화면 4단계에서 확인할 수 있습니다.');
-    setTimeout(function () { location.href = 'index.html#sec-result'; }, 900);
+    setTimeout(function () {
+      /* 메인 창이 살아 있으면 그쪽으로 돌아가고 이 창은 닫음 (창이 두 개 쌓이지 않도록) */
+      var op = null;
+      try { op = window.opener && !window.opener.closed ? window.opener : null; } catch (e) { op = null; }
+      if (op) {
+        try { op.location.hash = '#sec-result'; op.focus(); } catch (e) { /* 다른 출처면 무시 */ }
+        window.close();
+        /* 브라우저가 닫기를 막은 경우에만 이 창을 메인으로 이동 */
+        setTimeout(function () { if (!window.closed) location.href = 'index.html#sec-result'; }, 300);
+      } else location.href = 'index.html#sec-result';
+    }, 900);
   }
 
   /* ---------- 타이머 ---------- */
