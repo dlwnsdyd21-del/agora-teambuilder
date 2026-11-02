@@ -16,7 +16,8 @@
   function newSession() {
     return {
       version: 1, classLabel: '', updatedAt: null,
-      students: [],
+      classInfo: null,                         // {grade, cls} — 불러온 자료의 학급 (다른 반 자료 혼입 방지)
+      students: [],                            // 학생: {..., status?: ''|'absent'|'limited'|'role'} (결석·활동 제한·기록/심판은 편성에서 제외)
       options: JSON.parse(JSON.stringify(DEFAULT_OPTIONS)),
       imports: { paps: null, survey: null },   // {fileName, sheetName, rowCount, mappingSummary}
       result: null,                            // {teams:[[ids]], seed, log, builtAt, source?: 'auto'|'draft', mode?}
@@ -61,6 +62,12 @@
   }
 
   function get() { return state.session; }
+
+  /* ---------- 참여 상태 (결석·활동 제한·기록/심판 학생은 오늘 편성에서 제외) ---------- */
+  var STATUS_LABEL = { absent: '결석', limited: '활동 제한', role: '기록·심판' };
+  function isActive(st) { return !st.status || st.status === 'active'; }
+  function activeStudents(session) { return (session || state.session).students.filter(isActive); }
+  function inactiveStudents(session) { return (session || state.session).students.filter(function (s) { return !isActive(s); }); }
 
   function pushUndo() {
     state.undo.push(JSON.stringify(state.session));
@@ -126,15 +133,32 @@
     replace(e.session);
     return true;
   }
+  /* 저장본 하나 읽기(세션 객체 복사) / 현재 화면을 바꾸지 않고 저장본 갱신 */
+  function getSaved(label) {
+    var e = listSaved().find(function (x) { return x.label === label; });
+    return e ? hydrate(JSON.parse(JSON.stringify(e.session))) : null;
+  }
+  function putSaved(label, sessionObj) {
+    var arr = listSaved();
+    var lbl = String(label || '').trim();
+    if (!lbl) return arr;
+    var entry = { label: lbl, updatedAt: new Date().toISOString(), session: JSON.parse(JSON.stringify(sessionObj)) };
+    entry.session.classLabel = lbl;
+    var idx = arr.findIndex(function (e) { return e.label === lbl; });
+    if (idx >= 0) arr[idx] = entry; else arr.push(entry);
+    writeSaved(arr);
+    return arr;
+  }
   function deleteSaved(label) {
     writeSaved(listSaved().filter(function (x) { return x.label !== label; }));
   }
 
   var api = {
-    KEY: KEY, DEFAULT_OPTIONS: DEFAULT_OPTIONS, newSession: newSession, load: load, get: get, update: update,
+    KEY: KEY, DEFAULT_OPTIONS: DEFAULT_OPTIONS, newSession: newSession, hydrate: hydrate, load: load, get: get, update: update,
     undo: undo, canUndo: canUndo, reset: reset, replace: replace, onChange: onChange, persistNow: persistNow,
     exportJSON: exportJSON, importJSON: importJSON,
-    listSaved: listSaved, saveAs: saveAs, loadSaved: loadSaved, deleteSaved: deleteSaved
+    STATUS_LABEL: STATUS_LABEL, isActive: isActive, activeStudents: activeStudents, inactiveStudents: inactiveStudents,
+    listSaved: listSaved, saveAs: saveAs, loadSaved: loadSaved, deleteSaved: deleteSaved, getSaved: getSaved, putSaved: putSaved
   };
   root.AgoraState = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

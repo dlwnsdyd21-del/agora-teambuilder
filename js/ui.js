@@ -60,20 +60,32 @@
   }
 
   /* ---------- 파생 데이터 ---------- */
-  function prepare(session) { return S.prepareStudents(session.students, session.options); }
-  function sanitizeTeams(session) {
-    if (!session.result || !Array.isArray(session.result.teams)) return null;
-    var ids = {}; session.students.forEach(function (s) { ids[s.id] = true; });
-    var seen = {};
-    return session.result.teams.map(function (t) {
-      return t.filter(function (id) { if (!ids[id] || seen[id]) return false; seen[id] = true; return true; });
+  /* 편성 대상 = 참여 학생만 (결석·활동 제한·기록/심판 제외). 결측 대체(학급 평균)도 참여 학생 기준 */
+  function prepare(session) { return S.prepareStudents(St.activeStudents(session), session.options); }
+  /* 결과 팀에서 명단에 없는 학생·불참 학생·중복을 걷어냄. 불참 학생은 result.teams 에는 남아 있어 복귀하면 원래 팀으로 돌아감 */
+  function sanitizeTeamsReport(session) {
+    if (!session.result || !Array.isArray(session.result.teams)) return { teams: null, dups: 0 };
+    var ids = {}; St.activeStudents(session).forEach(function (s) { ids[s.id] = true; });
+    var seen = {}, dups = 0;
+    var teams = session.result.teams.map(function (t) {
+      return t.filter(function (id) { if (!ids[id]) return false; if (seen[id]) { dups++; return false; } seen[id] = true; return true; });
     });
+    return { teams: teams, dups: dups };
   }
+  function sanitizeTeams(session) { return sanitizeTeamsReport(session).teams; }
   function unassignedIds(session, teams) {
     var inTeam = {};
     (teams || []).forEach(function (t) { t.forEach(function (id) { inTeam[id] = true; }); });
-    return session.students.filter(function (s) { return !inTeam[s.id]; }).map(function (s) { return s.id; });
+    return St.activeStudents(session).filter(function (s) { return !inTeam[s.id]; }).map(function (s) { return s.id; });
   }
+  function normName(s) { return String(s || '').replace(/\s/g, '').toLowerCase(); }
+  function classLabelOf(ci) { return ci.grade !== null && ci.grade !== undefined ? ci.grade + '-' + ci.cls : ci.cls + '반'; }
+  function sameClass(a, b) {
+    if (!a || !b || a.cls === null || a.cls === undefined || b.cls === null || b.cls === undefined) return false;
+    if (a.cls !== b.cls) return false;
+    return a.grade === null || a.grade === undefined || b.grade === null || b.grade === undefined || a.grade === b.grade;
+  }
+  function currentClassInfo(s) { return s.classInfo || (s.classLabel ? P.parseClass(s.classLabel) : null); }
 
   /* ============================================================
    * 1. 데이터 불러오기
@@ -117,15 +129,17 @@
     /* 가장 잘 인식되는 시트를 기본 선택 */
     var bestIdx = 0, bestScore = -1;
     sheets.forEach(function (sh, i) { var d = P.detectTable(sh.rows); if (d.score > bestScore) { bestScore = d.score; bestIdx = i; } });
-    pending[kind] = { fileName: fileName, sheets: sheets, sheetIndex: bestIdx, det: P.detectTable(sheets[bestIdx].rows) };
-    /* 확실하면 확인 없이 바로 반영 */
+    pending[kind] = { fileName: fileName, sheets: sheets, sheetIndex: bestIdx, det: P.detectTable(sheets[bestIdx].rows), allSheets: false };
+    /* 확실하면 확인 없이 바로 반영 (시트가 여러 개면 읽을 범위를 먼저 확인) */
     if (sheets.length === 1 && isConfident(pending[kind].det)) {
       lastImport[kind] = pending[kind];
-      if (applyPending(kind, true)) {
+      var r = applyPending(kind, true);
+      if (r === true) {
         var roster = $('#sec-roster');
         if (roster) roster.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
       }
+      if (r === 'panel') return;   // 학급 선택 패널이 떠 있음
       pending[kind] = lastImport[kind]; lastImport[kind] = null;
     }
     renderMapping(kind);
@@ -146,6 +160,7 @@
           pd.sheets.map(function (sh, i) { return h('option', { value: i, selected: i === pd.sheetIndex, text: sh.name + ' (' + sh.rows.length + '행)' }); }))) : h('span', { class: 'hint', text: rows.length + '행' })
     ));
     det.warnings.forEach(function (w) { wrap.appendChild(h('div', { class: 'warn', text: w })); });
+    if (pd.sheets.length > 1) wrap.appendChild(h('div', { class: 'warn', text: '시트가 ' + pd.sheets.length + '개입니다. "이 자료 반영"은 위에서 고른 시트 하나만 읽습니다. 시트마다 반이 다르면 "모든 시트 합쳐 반영"을 누르세요 — 반별로 나눠 학급 목록이 뜹니다(시트 이름이 "3"·"1-3"처럼 반이면 반으로 인식).' }));
     /* 인식 요약 + 적용 버튼을 먼저, 세부 매핑은 접어 둠 */
     var found = [];
     if (m.no !== undefined) found.push('번호'); if (m.hakbun !== undefined) found.push('학번'); if (m.name !== undefined) found.push('이름'); if (m.gender !== undefined) found.push('성별');
@@ -155,7 +170,8 @@
     var recCount = P.extractStudents(rows, det).length;
     wrap.appendChild(h('div', { class: 'row wrap', style: 'margin:.5rem 0' },
       h('span', { class: 'hint', text: '인식된 열: ' + (found.join(' · ') || '없음') + ' · 학생 ' + recCount + '명' }),
-      h('button', { class: 'btn primary', type: 'button', onclick: function () { applyPending(kind); } }, '이 자료 반영'),
+      h('button', { class: 'btn primary', type: 'button', onclick: function () { pd.allSheets = false; applyPending(kind); } }, '이 자료 반영'),
+      pd.sheets.length > 1 ? h('button', { class: 'btn', type: 'button', title: '모든 시트의 학생을 읽어 반별로 나눕니다', onclick: function () { pd.allSheets = true; applyPending(kind); } }, '모든 시트 합쳐 반영') : null,
       h('button', { class: 'btn ghost', type: 'button', onclick: function () { detail.hidden = !detail.hidden; this.textContent = detail.hidden ? '열 매핑 보기' : '열 매핑 닫기'; } }, '열 매핑 보기'),
       h('button', { class: 'btn ghost', type: 'button', onclick: function () { pending[kind] = null; clear(box); } }, '취소')
     ));
@@ -208,82 +224,276 @@
   }
   function colLetter(c) { var s = ''; c = c + 1; while (c > 0) { var r = (c - 1) % 26; s = String.fromCharCode(65 + r) + s; c = Math.floor((c - 1) / 26); } return s; }
 
-  /* quiet: 자동 반영 시 실패해도 토스트 대신 false 반환 */
+  /* pending 의 시트(들)에서 학생 레코드 수집 + 검증 보고 */
+  function collectRecords(pd) {
+    var idxs = pd.allSheets ? pd.sheets.map(function (_, i) { return i; }) : [pd.sheetIndex];
+    var recs = [], skipped = [], dups = [], noData = 0, partial = 0, rows = 0, names = [];
+    idxs.forEach(function (i) {
+      var sh = pd.sheets[i];
+      var det = i === pd.sheetIndex ? pd.det : P.detectTable(sh.rows);
+      if (det.mapping.no === undefined && det.mapping.name === undefined && det.mapping.hakbun === undefined) return;
+      det.meta = det.meta || {};
+      det.meta.sheetClass = (pd.allSheets && pd.sheets.length > 1) ? P.parseClass(sh.name) : null;
+      var rep = P.extractReport(sh.rows, det);
+      var tag = pd.allSheets && pd.sheets.length > 1 ? '[' + sh.name + '] ' : '';
+      recs = recs.concat(rep.records);
+      rep.skipped.forEach(function (x) { skipped.push({ row: x.row, reason: x.reason, text: x.text, sheet: tag }); });
+      dups = dups.concat(rep.duplicates);
+      noData += rep.noData; partial += rep.partial; rows += Math.max(0, sh.rows.length - det.headerRow - 1); names.push(sh.name);
+    });
+    return { recs: recs, skipped: skipped, duplicates: dups, noData: noData, partial: partial, rows: rows, sheetName: names.join(', ') };
+  }
+  /* 레코드를 반별로 묶기 (반을 모르는 레코드는 key null 그룹) */
+  function groupByClass(recs) {
+    var map = {}, order = [];
+    recs.forEach(function (r) {
+      var k = P.classKeyOf(r) || '';
+      if (!map[k]) { map[k] = { key: k || null, grade: r.grade, cls: r.cls, recs: [], label: k ? classLabelOf(r) : '반 미상', uniq: 0, seen: {} }; order.push(k); }
+      map[k].recs.push(r);
+      var sk = keyOf(r) || ('r' + map[k].recs.length);
+      if (!map[k].seen[sk]) { map[k].seen[sk] = true; map[k].uniq++; }
+    });
+    return order.map(function (k) { return map[k]; }).sort(function (a, b) {
+      if (!a.key) return 1; if (!b.key) return -1;
+      return (a.grade || 0) - (b.grade || 0) || (a.cls || 0) - (b.cls || 0);
+    });
+  }
+  function nameOverlap(students, recs) {
+    var set = {}; students.forEach(function (s) { if (s.name) set[normName(s.name)] = true; });
+    var n = 0; recs.forEach(function (r) { if (r.name && set[normName(r.name)]) n++; });
+    return n;
+  }
+
+  /*
+   * quiet: 자동 반영 시 실패해도 토스트 대신 false 반환.
+   * 반환 true(반영) / false(열 지정 필요) / 'panel'(학급 선택 패널 표시)
+   */
   function applyPending(kind, quiet) {
     var pd = pending[kind];
     if (!pd) return false;
-    var sheet = pd.sheets[pd.sheetIndex];
     var det = pd.det;
     det.mapping.itemCount = det.mapping.items.filter(function (c) { return c >= 0; }).length;
     if (det.mapping.no === undefined && det.mapping.name === undefined && det.mapping.hakbun === undefined) { if (!quiet) toast('번호, 학번 또는 이름 열을 지정해 주세요.', true); return false; }
-    var recs = P.extractStudents(sheet.rows, det);
+    var col = collectRecords(pd);
+    var recs = col.recs;
     if (!recs.length) { if (!quiet) toast('학생 행을 찾지 못했습니다. 헤더 행과 번호/이름 열을 확인하세요.', true); return false; }
     var hasData = recs.some(function (r) { return r.papsRaw || r.papsGiven !== null || r.items || r.virtuesGiven; });
     if (!hasData) { if (!quiet) toast('점수 열(PAPS 원기록/총점 또는 32문항/4덕목)을 지정해 주세요.', true); return false; }
-    applyImport(kind, recs, { fileName: pd.fileName, sheetName: sheet.name, papsGivenType: det.mapping.papsGivenType, neis: det.meta && det.meta.neis });
-    lastImport[kind] = pd;
-    pending[kind] = null;
-    clear($('#map-' + kind));
-    var msg = recs.length + '명의 자료를 반영했습니다.';
-    if (det.meta && det.meta.neis) {
-      var s = St.get();
-      var inf = S.inferFromNeis(s.students, s.options);
-      if (inf.inferred) {
-        var applied = 0;
-        St.update(function (ss) {
-          ss.students.forEach(function (st) {
-            var r = inf.byId[st.id];
-            if (r && !st.gender) { st.gender = r.gender; st.genderInferred = true; applied++; }
-          });
-          if (inf.gradeKey && inf.gradeKeyShare >= 0.8) {
-            ss.options.schoolLevel = inf.gradeKey.charAt(0);
-            ss.options.defaultGrade = parseInt(inf.gradeKey.slice(1), 10) || ss.options.defaultGrade;
-          }
-        }, { noUndo: true });
-        msg += ' 나이스 점수로 기준표를 대조해 ' + (inf.gradeKeyShare >= 0.8 ? inf.gradeKey + ' 기준표, ' : '') + '성별 ' + applied + '명(남 ' + inf.counts['남'] + ' 여 ' + inf.counts['여'] + ')을 추정했습니다. 명단에서 확인하세요.';
+
+    /* 학급 구분: 파일에 반 정보가 있으면 현재 학급과 맞는 반만 반영 (다른 반 혼입 방지) */
+    var groups = groupByClass(recs);
+    var known = groups.filter(function (g) { return g.key; });
+    var s = St.get();
+    var cur = currentClassInfo(s);
+    var choice = null;
+    if (known.length) {
+      if (cur) choice = known.find(function (g) { return sameClass(g, cur); }) || null;
+      if (!choice && !cur && known.length === 1) choice = known[0];
+      if (!choice && !cur && known.length >= 2 && s.students.length) {
+        /* 현재 명단과 이름이 가장 많이 겹치는 반을 자동 선택 */
+        var best = null, bestN = 0;
+        known.forEach(function (g) { var n = nameOverlap(s.students, g.recs); if (n > bestN) { bestN = n; best = g; } });
+        if (best && bestN >= Math.max(3, Math.ceil(0.6 * Math.min(s.students.length, best.recs.length)))) choice = best;
       }
+      if (!choice) { renderClassPanel(kind, pd, col, groups, cur); return 'panel'; }
+      recs = choice.recs.slice();
     }
-    toast(msg);
+    finishApply(kind, pd, recs, col, { excluded: col.recs.length - recs.length, classCount: known.length, unknownCount: known.length ? (groups.length - known.length ? groups[groups.length - 1].recs.length : 0) : 0, chosen: choice });
     return true;
   }
 
-  function applyImport(kind, recs, meta) {
-    St.update(function (s) {
-      var byKey = {};
-      s.students.forEach(function (st) { var k = keyOf(st); if (k) byKey[k] = st; });
-      var added = 0;
-      recs.forEach(function (r) {
-        var k = keyOf(r);
-        var st = k ? byKey[k] : null;
-        if (!st) {
-          st = { id: k || ('u' + Date.now() + Math.floor(Math.random() * 1e6)), no: r.no === undefined ? null : r.no, name: r.name || null, gender: null,
-                 papsRaw: null, papsGiven: null, items: null, virtuesGiven: null, source: { paps: false, survey: false } };
-          s.students.push(st); if (k) byKey[k] = st; added++;
-        }
-        if (!st.source) st.source = { paps: false, survey: false };
-        if (!st.name && r.name) st.name = r.name;
-        if (r.gender) { st.gender = r.gender; st.genderInferred = false; }
-        if (r.grade && !st.grade) st.grade = r.grade;
-        if (kind === 'paps') {
-          st.source.paps = true;
-          if (r.papsRaw) st.papsRaw = r.papsRaw;
-          if (r.papsGiven !== null && r.papsGiven !== undefined) st.papsGiven = r.papsGiven;
-          st.papsNeis = r.papsNeis || null;
-          if (r.items && !st.items) st.items = r.items;
-          if (r.virtuesGiven && !st.virtuesGiven) st.virtuesGiven = r.virtuesGiven;
-        } else {
-          st.source.survey = true;
-          if (r.items) st.items = r.items;
-          if (r.virtuesGiven) st.virtuesGiven = r.virtuesGiven;
-          if (r.papsRaw && !st.papsRaw) st.papsRaw = r.papsRaw;
-          if (r.papsGiven !== null && r.papsGiven !== undefined && st.papsGiven === null) st.papsGiven = r.papsGiven;
-          if (r.papsNeis && !st.papsNeis) st.papsNeis = r.papsNeis;
-        }
-      });
-      sortStudents(s.students);
-      s.imports[kind] = { fileName: meta.fileName, sheetName: meta.sheetName, rowCount: recs.length, added: added, at: new Date().toISOString() };
-      if (meta.papsGivenType) s.options.papsGivenType = meta.papsGivenType;
+  /* 선택된 레코드를 현재 세션에 반영하고 검증 보고를 남김 */
+  function finishApply(kind, pd, recs, col, extra) {
+    var det = pd.det;
+    var meta = { fileName: pd.fileName, sheetName: col.sheetName, papsGivenType: det.mapping.papsGivenType, neis: det.meta && det.meta.neis };
+    var inferMsg = '';
+    St.update(function (ss) {
+      if (extra.chosen && !ss.classInfo) { ss.classInfo = { grade: extra.chosen.grade, cls: extra.chosen.cls }; if (!ss.classLabel) ss.classLabel = extra.chosen.label; }
+      var report = applyRecordsTo(ss, kind, recs, meta);
+      report.skipped = col.skipped; report.duplicates = col.duplicates; report.noData = col.noData; report.partial = col.partial; report.rows = col.rows;
+      report.excluded = extra.excluded || 0; report.classCount = extra.classCount || 0; report.unknownCount = extra.unknownCount || 0; report.chosen = extra.chosen ? extra.chosen.label : null;
+      ss.imports[kind] = report;
+      if (meta.neis) {
+        var inf = inferGenderInto(ss);
+        if (inf.applied) inferMsg = ' 나이스 점수로 기준표를 대조해 ' + (inf.inf.gradeKeyShare >= 0.8 ? inf.inf.gradeKey + ' 기준표, ' : '') + '성별 ' + inf.applied + '명(남 ' + inf.inf.counts['남'] + ' 여 ' + inf.inf.counts['여'] + ')을 추정했습니다. 명단에서 확인하세요.';
+      }
     });
+    lastImport[kind] = pd;
+    pending[kind] = null;
+    clear($('#map-' + kind));
+    var rep = St.get().imports[kind] || {};
+    var msg = (rep.added + rep.updated || recs.length) + '명의 자료를 반영했습니다' + (extra.chosen ? ' (' + extra.chosen.label + ' 학급)' : '') + (extra.excluded ? ' · 다른 반 ' + extra.excluded + '명은 제외' : '') + '.';
+    if (col.skipped.length) msg += ' 건너뛴 행 ' + col.skipped.length + '개는 1단계 검증 결과에서 확인하세요.';
+    toast(msg + inferMsg);
+  }
+
+  /* 나이스 영역 점수와 기준표를 대조해 성별·학년(기준표) 추정 — 세션 객체를 직접 바꿈 */
+  function inferGenderInto(ss) {
+    var inf = S.inferFromNeis(ss.students, ss.options);
+    var applied = 0;
+    if (inf.inferred) {
+      ss.students.forEach(function (st) {
+        var r = inf.byId[st.id];
+        if (r && !st.gender) { st.gender = r.gender; st.genderInferred = true; applied++; }
+      });
+      if (inf.gradeKey && inf.gradeKeyShare >= 0.8) {
+        ss.options.schoolLevel = inf.gradeKey.charAt(0);
+        ss.options.defaultGrade = parseInt(inf.gradeKey.slice(1), 10) || ss.options.defaultGrade;
+      }
+    }
+    return { applied: applied, inf: inf };
+  }
+
+  /* 여러 반 파일: 어느 반을 불러올지 고르는 패널 (또는 현재 학급과 다른 반 경고) */
+  function renderClassPanel(kind, pd, col, groups, cur) {
+    var box = clear($('#map-' + kind));
+    var s = St.get();
+    var known = groups.filter(function (g) { return g.key; });
+    var wrap = h('div', { class: 'map-box class-panel' });
+    var title, desc;
+    if (known.length >= 2) {
+      title = '📚 ' + pd.fileName + ' — ' + known.length + '개 반 · ' + groups.reduce(function (a, g) { return a + g.uniq; }, 0) + '명';
+      desc = '여러 반이 들어 있는 자료입니다. 반이 섞이지 않도록 한 반씩 불러옵니다. 불러올 반을 고르거나, "모든 반을 각각 저장"한 뒤 상단 학급 전환에서 반을 바꿔 가며 편성하세요.';
+    } else {
+      title = '⚠ 학급이 다릅니다';
+      desc = '현재 화면은 ' + (s.classLabel || (cur ? classLabelOf(cur) : '')) + ' 학급(' + s.students.length + '명)인데, 이 파일은 ' + known[0].label + ' 자료(' + known[0].recs.length + '명)입니다. 다른 반 자료가 섞이지 않도록 아직 반영하지 않았습니다.';
+    }
+    wrap.appendChild(h('div', { class: 'row wrap' }, h('b', { text: title })));
+    wrap.appendChild(h('p', { class: 'hint', text: desc }));
+    if (s.students.length) wrap.appendChild(h('p', { class: 'hint', text: '현재 화면: ' + (s.classLabel || '학급 이름 없음') + ' · ' + s.students.length + '명' + (cur ? '' : ' — 상단 학급 칸에 "1-3"처럼 적어 두면 다음부터 맞는 반만 자동으로 들어옵니다.') }));
+    var saved = St.listSaved();
+    var table = h('table', { class: 'class-table' });
+    table.appendChild(h('thead', null, h('tr', null, h('th', { text: '반' }), h('th', { text: '인원' }), h('th', { text: '번호 범위' }), h('th', { text: '저장본' }), h('th'))));
+    var tb = h('tbody');
+    groups.forEach(function (g) {
+      var nos = g.recs.map(function (r) { return r.no; }).filter(function (n) { return n !== null; });
+      var range = nos.length ? Math.min.apply(null, nos) + '~' + Math.max.apply(null, nos) : '–';
+      var isCur = cur && g.key && sameClass(g, cur);
+      var sv = g.key ? saved.find(function (e) { return e.label === g.label; }) : null;
+      var btnLabel = !g.key ? '현재 학급에 합치기' : isCur ? '현재 학급에 반영' : (s.students.length ? '이 반으로 전환해 불러오기' : '이 반 불러오기');
+      tb.appendChild(h('tr', { class: isCur ? 'cur' : '' },
+        h('td', null, h('b', { text: g.label }), !g.key ? h('span', { class: 'hint', text: ' (학번에 반이 없는 응답)' }) : null),
+        h('td', { text: g.uniq + '명' + (g.recs.length > g.uniq ? ' (중복 ' + (g.recs.length - g.uniq) + ')' : '') }), h('td', { text: range }),
+        h('td', { class: 'hint', text: sv ? '있음 · ' + ((sv.session && sv.session.students) || []).length + '명' + (sv.session && sv.session.result ? ' · 편성됨' : '') : '' }),
+        h('td', null, h('button', { class: 'btn small' + (isCur ? ' primary' : ''), type: 'button', onclick: function () { importGroup(kind, pd, col, groups, g, cur); } }, btnLabel))));
+    });
+    table.appendChild(tb);
+    wrap.appendChild(table);
+    var actions = h('div', { class: 'row wrap', style: 'margin-top:.6rem' });
+    if (known.length >= 2) actions.appendChild(h('button', { class: 'btn primary', type: 'button', title: '반마다 학급 저장본을 만들거나 갱신합니다 (이미 저장된 반은 자료를 합침)', onclick: function () { saveAllClasses(kind, pd, col, groups); } }, '모든 반을 각각 저장 (' + known.length + '개 반)'));
+    if (known.length === 1 && s.students.length) actions.appendChild(h('button', { class: 'btn ghost', type: 'button', onclick: function () {
+      if (confirm('정말 다른 반 자료를 현재 학급에 합칠까요? 번호가 같은 학생이 덮어써질 수 있습니다.')) finishApply(kind, pd, col.recs, col, { excluded: 0, classCount: groups.length, chosen: null });
+    } }, '그래도 현재 학급에 합치기'));
+    actions.appendChild(h('button', { class: 'btn ghost', type: 'button', onclick: function () { pending[kind] = null; clear(box); } }, '취소'));
+    wrap.appendChild(actions);
+    if (col.skipped.length) wrap.appendChild(h('div', { class: 'warn', text: '건너뛴 행 ' + col.skipped.length + '개: ' + col.skipped.slice(0, 5).map(function (x) { return (x.sheet || '') + x.row + '행 ' + x.reason + (x.text ? ' "' + x.text + '"' : ''); }).join(' · ') + (col.skipped.length > 5 ? ' …' : '') }));
+    box.appendChild(wrap);
+  }
+  function importGroup(kind, pd, col, groups, g, cur) {
+    var s = St.get();
+    var isCur = cur && g.key && sameClass(g, cur);
+    if (g.key && !isCur && s.students.length) switchClass(g.label, { grade: g.grade, cls: g.cls });
+    finishApply(kind, pd, g.recs.slice(), col, { excluded: col.recs.length - g.recs.length, classCount: groups.length, chosen: g.key ? g : null });
+  }
+  /* 학급 전환: 현재 화면을 학급 이름으로 저장하고, 저장본(없으면 새 세션)을 불러옴 */
+  function switchClass(label, classInfo) {
+    var s = St.get();
+    var savedPrev = false;
+    if (s.students.length) {
+      var curLabel = s.classLabel || (s.classInfo ? classLabelOf(s.classInfo) : '');
+      if (!curLabel) curLabel = prompt('현재 화면의 학급 이름을 정해 저장합니다 (예: 1-3). 비우면 저장하지 않습니다.', '') || '';
+      if (curLabel.trim()) { St.putSaved(curLabel.trim(), s); savedPrev = true; }
+    }
+    var target = St.getSaved(label);
+    if (!target) { target = St.newSession(); target.classLabel = label; target.classInfo = classInfo || P.parseClass(label) || null; }
+    St.replace(target);
+    pending = { paps: null, survey: null }; lastImport = { paps: null, survey: null };
+    clear($('#map-paps')); clear($('#map-survey'));
+    toast(label + ' 학급으로 전환했습니다' + (savedPrev ? ' (이전 학급은 저장됨)' : '') + '.');
+  }
+  /* 여러 반 파일의 모든 반을 각각 학급 저장본으로 (현재 학급과 같은 반은 현재 화면에 반영) */
+  function saveAllClasses(kind, pd, col, groups) {
+    var s = St.get();
+    var cur = currentClassInfo(s);
+    var det = pd.det;
+    var meta = { fileName: pd.fileName, sheetName: col.sheetName, papsGivenType: det.mapping.papsGivenType, neis: det.meta && det.meta.neis };
+    var known = groups.filter(function (g) { return g.key; }), done = [], curGroup = null;
+    known.forEach(function (g) {
+      if (cur && s.students.length && sameClass(g, cur)) { curGroup = g; return; }
+      var ses = St.getSaved(g.label) || St.newSession();
+      ses.classLabel = g.label;
+      if (!ses.classInfo) ses.classInfo = { grade: g.grade, cls: g.cls };
+      var rep = applyRecordsTo(ses, kind, g.recs, meta);
+      rep.skipped = []; rep.duplicates = []; rep.rows = g.recs.length; rep.excluded = 0; rep.classCount = groups.length; rep.chosen = g.label;
+      ses.imports[kind] = rep;
+      if (meta.neis) inferGenderInto(ses);
+      St.putSaved(g.label, ses);
+      done.push(g.label);
+    });
+    if (curGroup) finishApply(kind, pd, curGroup.recs, col, { excluded: col.recs.length - curGroup.recs.length, classCount: groups.length, chosen: curGroup });
+    else {
+      pending[kind] = null; clear($('#map-' + kind));
+      if (!s.students.length && done.length) St.loadSaved(done[0]);
+    }
+    render();
+    toast(done.length + '개 반을 각각 저장했습니다' + (!s.students.length && done.length ? ' · ' + done[0] + ' 학급을 열었습니다' : '') + '. 상단 학급 전환에서 반을 바꿔 가며 편성하세요.');
+  }
+
+  /* 레코드를 세션 객체에 합침 (번호 기준, 없으면 이름). 반환: 검증 보고 */
+  function applyRecordsTo(s, kind, recs, meta) {
+    var byKey = {};
+    s.students.forEach(function (st) { var k = keyOf(st); if (k) byKey[k] = st; });
+    var added = 0, updated = 0, mism = [], touched = {};
+    recs.forEach(function (r) {
+      var k = keyOf(r);
+      var st = k ? byKey[k] : null;
+      if (!st) {
+        st = { id: k || ('u' + Date.now() + Math.floor(Math.random() * 1e6)), no: r.no === undefined ? null : r.no, name: r.name || null, gender: null,
+               papsRaw: null, papsGiven: null, items: null, virtuesGiven: null, source: { paps: false, survey: false } };
+        s.students.push(st); if (k) byKey[k] = st; added++; touched[st.id] = true;
+      } else {
+        if (!touched[st.id]) { updated++; touched[st.id] = true; }   // 같은 학생이 두 행이면 한 명으로 셈
+        /* 같은 번호인데 이름이 다르면 보고 (나이스 이름을 공식으로 봄) */
+        if (st.name && r.name && normName(st.name) !== normName(r.name)) {
+          mism.push({ no: r.no, roster: st.name, file: r.name, kept: kind === 'paps' ? 'file' : 'roster' });
+          if (kind === 'paps') st.name = r.name;
+        }
+      }
+      if (!st.source) st.source = { paps: false, survey: false };
+      if (!st.name && r.name) st.name = r.name;
+      if (r.gender) { st.gender = r.gender; st.genderInferred = false; }
+      if (r.grade && !st.grade) st.grade = r.grade;
+      if (r.cls !== null && r.cls !== undefined && (st.cls === null || st.cls === undefined)) st.cls = r.cls;
+      if (kind === 'paps') {
+        st.source.paps = true;
+        if (r.papsRaw) st.papsRaw = r.papsRaw;
+        if (r.papsGiven !== null && r.papsGiven !== undefined) st.papsGiven = r.papsGiven;
+        st.papsNeis = r.papsNeis || null;
+        if (r.items && !st.items) st.items = r.items;
+        if (r.virtuesGiven && !st.virtuesGiven) st.virtuesGiven = r.virtuesGiven;
+      } else {
+        st.source.survey = true;
+        if (r.items) st.items = r.items;
+        if (r.virtuesGiven) st.virtuesGiven = r.virtuesGiven;
+        if (r.papsRaw && !st.papsRaw) st.papsRaw = r.papsRaw;
+        if (r.papsGiven !== null && r.papsGiven !== undefined && st.papsGiven === null) st.papsGiven = r.papsGiven;
+        if (r.papsNeis && !st.papsNeis) st.papsNeis = r.papsNeis;
+      }
+    });
+    sortStudents(s.students);
+    /* 학급 식별 정보 보완 */
+    var withCls = recs.find(function (r) { return r.cls !== null && r.cls !== undefined; });
+    if (!s.classInfo && withCls) s.classInfo = { grade: withCls.grade, cls: withCls.cls };
+    else if (s.classInfo && (s.classInfo.grade === null || s.classInfo.grade === undefined)) {
+      var wg = recs.find(function (r) { return r.cls === s.classInfo.cls && r.grade !== null && r.grade !== undefined; });
+      if (wg) s.classInfo.grade = wg.grade;
+    }
+    if (!s.classLabel && s.classInfo) s.classLabel = classLabelOf(s.classInfo);
+    if (meta.papsGivenType) s.options.papsGivenType = meta.papsGivenType;
+    return { fileName: meta.fileName, sheetName: meta.sheetName, rowCount: recs.length, added: added, updated: updated, nameMismatch: mism, at: new Date().toISOString() };
+  }
+  function applyImport(kind, recs, meta) {
+    St.update(function (s) { s.imports[kind] = applyRecordsTo(s, kind, recs, meta); });
   }
   function sortStudents(list) {
     list.sort(function (a, b) {
@@ -300,11 +510,37 @@
       var im = s.imports && s.imports[kind];
       var cnt = s.students.filter(function (st) { return st.source && st.source[kind]; }).length;
       if (im) {
-        var line = h('div', { class: 'ok' }, '✔ ' + im.fileName + (im.sheetName && im.sheetName !== 'CSV' && im.sheetName !== 'sheet1' ? ' / ' + im.sheetName : '') + ' · ' + im.rowCount + '명 반영 (현재 ' + cnt + '명)');
+        var nStu = (im.added !== undefined && im.updated !== undefined) ? im.added + im.updated : im.rowCount;
+        var line = h('div', { class: 'ok' }, '✔ ' + im.fileName + (im.sheetName && im.sheetName !== 'CSV' && im.sheetName !== 'sheet1' ? ' / ' + im.sheetName : '') + ' · ' + nStu + '명 반영'
+          + (im.added !== undefined && im.updated !== undefined ? ' (새로 ' + im.added + (im.updated ? ' · 기존 갱신 ' + im.updated : '') + (im.rowCount > nStu ? ' · ' + im.rowCount + '행' : '') + ')' : '') + (im.chosen ? ' · ' + im.chosen + ' 학급' : '') + ' · 현재 ' + cnt + '명');
         if (lastImport[kind] && lastImport[kind].fileName === im.fileName) {
           line.appendChild(h('button', { class: 'btn ghost small adv', type: 'button', style: 'margin-left:.5rem', title: '열 인식이 잘못됐다면 직접 고쳐 다시 반영', onclick: function () { pending[kind] = lastImport[kind]; renderMapping(kind); } }, '열 매핑 수정'));
+          if (im.excluded) line.appendChild(h('button', { class: 'btn ghost small', type: 'button', style: 'margin-left:.3rem', title: '이 파일의 다른 반을 불러오거나 모든 반을 각각 저장', onclick: function () {
+            var pd = lastImport[kind]; pending[kind] = pd; var col = collectRecords(pd); renderClassPanel(kind, pd, col, groupByClass(col.recs), currentClassInfo(St.get()));
+          } }, '다른 반 보기'));
         }
         el.appendChild(line);
+        /* 검증 보고 */
+        var issues = [];
+        if (im.excluded) issues.push('다른 반 ' + (im.excluded - (im.unknownCount || 0)) + '명 제외' + (im.classCount ? ' (파일에 ' + im.classCount + '개 반)' : '') + (im.unknownCount ? ' · 반 미상 ' + im.unknownCount + '명 제외' : ''));
+        if (im.skipped && im.skipped.length) issues.push('건너뛴 행 ' + im.skipped.length);
+        if (im.duplicates && im.duplicates.length) issues.push('번호 중복 ' + im.duplicates.length + '건');
+        if (im.nameMismatch && im.nameMismatch.length) issues.push('이름 불일치 ' + im.nameMismatch.length + '건');
+        if (im.partial) issues.push('응답 일부 누락 ' + im.partial + '명');
+        if (im.noData) issues.push('점수 없는 행 ' + im.noData);
+        if (issues.length) {
+          var dt = h('details', { class: 'import-detail' }, h('summary', { text: '⚠ 검증: ' + issues.join(' · ') }));
+          var ul = h('ul');
+          (im.skipped || []).slice(0, 30).forEach(function (x) { ul.appendChild(h('li', { text: (x.sheet || '') + x.row + '행 건너뜀 — ' + x.reason + (x.text ? ' "' + x.text + '"' : '') })); });
+          if ((im.skipped || []).length > 30) ul.appendChild(h('li', { class: 'hint', text: '… 외 ' + (im.skipped.length - 30) + '행' }));
+          (im.duplicates || []).forEach(function (d) { ul.appendChild(h('li', { text: (d.key ? d.key + ' ' : '') + (d.no !== null && d.no !== undefined ? d.no + '번' : d.name) + ' — ' + d.rows.join(', ') + '행에 중복 (마지막 행 적용)' })); });
+          (im.nameMismatch || []).forEach(function (x) { ul.appendChild(h('li', { text: x.no + '번 이름 불일치 — 명단 "' + x.roster + '" / 파일 "' + x.file + '" → ' + (x.kept === 'file' ? '나이스 파일 이름으로 바꿈' : '명단 이름 유지') + '. 같은 번호의 다른 학생이라면 반이 섞였는지 확인하세요.' })); });
+          if (im.partial) ul.appendChild(h('li', { text: '32문항 중 일부에 응답이 없는 학생 ' + im.partial + '명 — 덕목별 5문항 이상이면 평균을 쓰고, 미만이면 학급 평균으로 대체합니다.' }));
+          if (im.noData) ul.appendChild(h('li', { text: '점수 열이 비어 있는 행 ' + im.noData + '개 — 명단에는 들어가며 결측(대체)으로 표시됩니다.' }));
+          if (im.excluded) ul.appendChild(h('li', { text: '다른 반 ' + im.excluded + '명은 반영하지 않았습니다. 그 반을 편성하려면 "다른 반 보기"에서 반을 고르거나 모든 반을 각각 저장하세요.' }));
+          dt.appendChild(ul);
+          el.appendChild(dt);
+        }
       }
       else el.appendChild(h('div', { class: 'hint' }, cnt ? cnt + '명에게 자료가 있습니다.' : '아직 불러온 자료가 없습니다.'));
     });
@@ -347,8 +583,9 @@
     }
     s.students.forEach(function (st) {
       var p = byId[st.id];
-      var tr = h('tr', { dataset: { id: st.id } });
-      tr.appendChild(h('td', null, h('input', { type: 'number', min: 1, 'data-field': 'no', value: st.no === null || st.no === undefined ? '' : st.no })));
+      var inactive = !St.isActive(st);
+      var tr = h('tr', { dataset: { id: st.id }, class: inactive ? 'inactive' : '', title: inactive ? (St.STATUS_LABEL[st.status] || '') + ' — 오늘 편성에서 제외' : '' });
+      tr.appendChild(h('td', null, h('input', { type: 'number', min: 1, 'data-field': 'no', value: st.no === null || st.no === undefined ? '' : st.no, title: '출석번호 (파일의 번호 그대로)' })));
       tr.appendChild(h('td', null, h('input', { type: 'text', 'data-field': 'name', value: st.name || '', placeholder: '이름' })));
       tr.appendChild(h('td', null, h('div', { class: 'gcell' },
         h('select', { 'data-field': 'gender', class: st.gender && st.genderInferred ? 'inferred' : '', title: st.genderInferred ? '나이스 점수와 기준표를 대조해 추정한 성별입니다. 틀리면 고쳐 주세요.' : '' },
@@ -383,8 +620,11 @@
         else td.appendChild(h('input', { type: 'number', step: '0.01', min: 1, max: 5, 'data-field': 'v_' + k, value: st.virtuesGiven && st.virtuesGiven[k] !== null && st.virtuesGiven[k] !== undefined ? st.virtuesGiven[k] : '', placeholder: '1~5', style: 'max-width:4.5em' }));
         tr.appendChild(td);
       });
-      /* 상태 */
+      /* 참여 상태 + 자료 상태 */
       var stTd = h('td');
+      stTd.appendChild(h('select', { 'data-field': 'status', class: 'status-select' + (inactive ? ' off' : ''), title: '결석·활동 제한·기록/심판 학생은 오늘 편성에서 빠집니다. 다시 "참여"로 바꾸면 원래 팀으로 돌아옵니다.' },
+        h('option', { value: '', text: '참여', selected: !inactive }),
+        Object.keys(St.STATUS_LABEL).map(function (k) { return h('option', { value: k, text: St.STATUS_LABEL[k], selected: st.status === k }); })));
       var src = st.source || {};
       stTd.appendChild(h('span', { class: 'badge ' + (src.paps || st.papsRaw || st.papsGiven !== null ? 'ok' : 'bad'), text: (src.paps || st.papsRaw || st.papsGiven !== null) ? 'PAPS' : 'PAPS 없음' }));
       stTd.appendChild(h('span', { class: 'badge ' + (st.items || st.virtuesGiven ? 'ok' : 'bad'), text: (st.items || st.virtuesGiven) ? (st.items ? '32문항' : '4덕목') : '설문 없음' }));
@@ -401,7 +641,12 @@
     var hasP = prep.filter(function (p) { return !p.papsImputed; }).length;
     var hasV = prep.filter(function (p) { return !p.virtueImputed && (p.items || p.virtuesGiven); }).length;
     var rel = prep.filter(function (p) { return p.papsDetail && p.papsDetail.source === 'relative'; }).length;
-    $('#roster-summary').textContent = s.students.length ? ('총 ' + s.students.length + '명 · 남 ' + m + ' 여 ' + f + (u ? ' 미상 ' + u : '') + ' · PAPS ' + hasP + '명' + (rel ? ' (상대점수 ' + rel + '명)' : '') + ' · 인성 ' + hasV + '명') : '';
+    var both = s.students.filter(function (x) { return x.source && x.source.paps && x.source.survey; }).length;
+    var onlyP = s.students.filter(function (x) { return x.source && x.source.paps && !x.source.survey; }).length;
+    var onlyS = s.students.filter(function (x) { return x.source && !x.source.paps && x.source.survey; }).length;
+    var inact = St.inactiveStudents(s).length;
+    var link = (s.imports && s.imports.paps && s.imports.survey) ? ' · 두 자료 연결 ' + both + '명' + (onlyP ? ' · PAPS만 ' + onlyP : '') + (onlyS ? ' · 설문만 ' + onlyS : '') : '';
+    $('#roster-summary').textContent = s.students.length ? ((s.classLabel ? s.classLabel + ' 학급 · ' : '') + '총 ' + s.students.length + '명 · 남 ' + m + ' 여 ' + f + (u ? ' 미상 ' + u : '') + ' · PAPS ' + hasP + '명' + (rel ? ' (상대점수 ' + rel + '명)' : '') + ' · 인성 ' + hasV + '명' + link + (inact ? ' · 오늘 불참 ' + inact + '명 (편성 ' + (s.students.length - inact) + '명)' : '')) : '';
   }
 
   function bindRosterEvents() {
@@ -415,6 +660,7 @@
         if (field === 'no') st.no = P.parseNo(val);
         else if (field === 'name') st.name = String(val).trim() || null;
         else if (field === 'gender') { st.gender = val || null; st.genderInferred = false; }
+        else if (field === 'status') st.status = val || '';
         else if (field === 'papsGiven') st.papsGiven = S.toNum(val);
         else if (field.slice(0, 2) === 'v_') { st.virtuesGiven = st.virtuesGiven || {}; st.virtuesGiven[field.slice(2)] = S.toNum(val); if (VK.every(function (k) { return st.virtuesGiven[k] === null || st.virtuesGiven[k] === undefined; })) st.virtuesGiven = null; }
         if (field === 'no' || field === 'name') sortStudents(s.students);
@@ -462,8 +708,8 @@
     setIfIdle($('#opt-defaultGrade'), o.defaultGrade || 1);
     setIfIdle($('#opt-papsGivenType'), o.papsGivenType);
     $$('input[name=draftMode]').forEach(function (r) { r.checked = (o.draftMode || 'auto') === r.value; });
-    var N = s.students.length, K = Math.max(1, o.teamCount | 0);
-    $('#team-size-hint').textContent = N ? ('학생 ' + N + '명 → 팀당 ' + Math.floor(N / K) + (N % K ? '~' + Math.ceil(N / K) : '') + '명') : '';
+    var N = prep.length, K = Math.max(1, o.teamCount | 0), inact = s.students.length - N;
+    $('#team-size-hint').textContent = N ? ('참여 학생 ' + N + '명' + (inact ? ' (불참 ' + inact + '명 제외)' : '') + ' → 팀당 ' + Math.floor(N / K) + (N % K ? '~' + Math.ceil(N / K) : '') + '명') : '';
     /* 자료 누락 경고 */
     var missV = prep.filter(function (p) { return p.virtueImputed; }).length, missP = prep.filter(function (p) { return p.papsImputed; }).length;
     var mw = $('#missing-warn');
@@ -566,9 +812,12 @@
     });
     toast('팀 편성 완료 (공정성 ' + res.equity + '점)');
   }
+  /* 수동 조정 전 편성 직후 상태를 남겨 둠 (복원용) */
+  function keepOriginal(s) { if (s.result && !s.result.original) s.result.original = s.result.teams.map(function (t) { return t.slice(); }); }
   function moveStudent(id, toTeam) {
     St.update(function (s) {
       if (!s.result) return;
+      keepOriginal(s);
       s.result.teams = s.result.teams.map(function (t) { return t.filter(function (x) { return x !== id; }); });
       while (s.result.teams.length <= toTeam) s.result.teams.push([]);
       s.result.teams[toTeam].push(id);
@@ -581,10 +830,47 @@
       var ta = -1, tb = -1;
       s.result.teams.forEach(function (t, i) { if (t.indexOf(a) >= 0) ta = i; if (t.indexOf(b) >= 0) tb = i; });
       if (ta < 0 || tb < 0 || ta === tb) return;
+      keepOriginal(s);
       s.result.teams[ta][s.result.teams[ta].indexOf(a)] = b;
       s.result.teams[tb][s.result.teams[tb].indexOf(b)] = a;
       s.manualEdits = true;
     });
+  }
+  function restoreOriginal() {
+    St.update(function (s) {
+      if (!s.result || !s.result.original) return;
+      s.result.teams = s.result.original.map(function (t) { return t.slice(); });
+      s.manualEdits = false;
+    });
+    toast('편성 직후 상태로 복원했습니다.');
+  }
+  /* 미배정(늦게 온·복귀한) 학생을 기존 팀은 그대로 두고 가장 균형에 맞는 팀에 넣음: 인원 → 성별 → 목적함수 J 순 */
+  function autoPlace(ids) {
+    var placed = 0;
+    St.update(function (s) {
+      if (!s.result) return;
+      keepOriginal(s);
+      var prep = prepare(s), byId = {}; prep.forEach(function (p) { byId[p.id] = p; });
+      var tau = Number(s.options.papsTolerance) || 3;
+      var K = Math.max(s.result.teams.length, s.options.teamCount | 0);
+      while (s.result.teams.length < K) s.result.teams.push([]);
+      ids.forEach(function (id) {
+        var p = byId[id]; if (!p) return;
+        var teams = s.result.teams, best = -1, bestKey = null;
+        for (var t = 0; t < teams.length; t++) {
+          var trial = teams.map(function (x, i) { return i === t ? x.concat([id]) : x; });
+          var st = A.evaluateTeams(prep, trial);
+          var size = trial[t].filter(function (x) { return byId[x]; }).length;
+          var gcnt = (s.options.genderBalance && p.gender) ? (p.gender === '남' ? st.teams[t].male : st.teams[t].female) : 0;
+          var J = 1000 * Math.max(0, st.Dp - tau) + st.Dc + 0.01 * st.Dp;
+          var key = [size, gcnt, J];
+          if (best < 0 || key[0] < bestKey[0] || (key[0] === bestKey[0] && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2] - 1e-12)))) { best = t; bestKey = key; }
+        }
+        if (best >= 0) { teams[best].push(id); placed++; }
+      });
+      s.manualEdits = true;
+    });
+    toast(placed + '명을 기존 팀은 그대로 두고 균형에 맞춰 배치했습니다.');
   }
 
   /* ============================================================
@@ -595,16 +881,26 @@
   function renderResult(s, prep) {
     var byId = {}; prep.forEach(function (p) { byId[p.id] = p; });
     var summary = clear($('#result-summary')), log = clear($('#result-log')), un = clear($('#unassigned')),
-        teamsEl = clear($('#teams')), bal = clear($('#balance')), charts = clear($('#charts'));
-    $('#result-class').textContent = s.classLabel ? s.classLabel + ' 학급' : '';
+        teamsEl = clear($('#teams')), bal = clear($('#balance')), charts = clear($('#charts')),
+        absentEl = clear($('#result-absent')), checks = clear($('#result-checks'));
+    $('#result-class').textContent = (s.classLabel ? s.classLabel + ' 학급' : '') + (s.result && s.result.builtAt ? ' · 편성 ' + X.localTime(s.result.builtAt, true) : '');
     $('#dnd-hint').textContent = '';
-    var teams = sanitizeTeams(s);
+    /* 오늘 불참·역할 학생 (학생용 보기에도 표시 — 점수 없음) */
+    var ina = St.inactiveStudents(s);
+    if (ina.length) absentEl.appendChild(h('div', { class: 'absent' }, h('b', { text: '오늘 불참·역할 ' + ina.length + '명 ' }),
+      ina.map(function (st) { return h('span', { class: 'badge', text: label(st) + ' · ' + (St.STATUS_LABEL[st.status] || st.status) }); }),
+      h('span', { class: 'hint teacher-only', text: ' — 편성에서 제외. 2단계 명단에서 "참여"로 바꾸면 원래 팀으로 돌아옵니다.' })));
+    var noteWrap = $('#result-note-wrap');
+    var sr = sanitizeTeamsReport(s), teams = sr.teams;
     if (!teams) {
+      if (noteWrap) noteWrap.hidden = true;
       teamsEl.appendChild(h('div', { class: 'empty', text: s.studentView ? '아직 편성 결과가 없습니다.' : '3단계에서 편성 방식을 고르고 "편성 화면 열기"로 편성을 마치면 결과가 여기에 나타납니다.' }));
       return;
     }
+    if (noteWrap) { noteWrap.hidden = false; setIfIdle($('#result-note'), (s.result && s.result.note) || ''); }
     var stats = A.evaluateTeams(prep, teams);
     var o = s.options;
+    var unIds = unassignedIds(s, teams);
 
     /* 요약 */
     summary.className = 'result-summary';
@@ -613,7 +909,8 @@
     summary.appendChild(h('div', { class: 'kv' },
       h('div', null, '팀 ', h('b', { text: teams.length }), '개 · 학생 ', h('b', { text: prep.length }), '명',
         s.manualEdits ? h('span', { class: 'badge warn', text: '수동 조정됨' }) : h('span', { class: 'badge ok', text: '시드 ' + s.result.seed }),
-        s.result.source === 'draft' ? h('span', { class: 'badge', text: ({ auto: '교사 편성', pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과' }) : null),
+        s.result.source === 'draft' ? h('span', { class: 'badge', text: ({ auto: '교사 편성', pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과' }) : null,
+        (s.manualEdits && s.result.original && !s.studentView) ? h('button', { class: 'btn ghost small', type: 'button', style: 'margin-left:.4rem', title: '수동 조정을 모두 되돌려 편성 직후(추천안) 상태로', onclick: restoreOriginal }, '편성 직후로 복원') : null),
       h('div', { class: 'teacher-only adv' }, 'PAPS 팀 평균 범위 ', h('b', { text: fmt(stats.Dp, 1) }), '점 (허용 ' + Number(o.papsTolerance).toFixed(1) + '점, 100점 만점)',
         ' · 인성 편차 지수 ', h('b', { text: fmt(stats.Dc, 2) }), h('span', { class: 'hint', text: ' (4덕목 팀 평균 SD ÷ 학생 SD 합, 작을수록 균등)' })),
       h('div', null, '성별 균형 ' + (o.genderBalance ? '켬' : '끔') + ' · 팀 평균 PAPS 점수·4덕목이 서로 비슷할수록 공정한 편성입니다.'),
@@ -624,10 +921,34 @@
     ));
     (s.result.log || []).forEach(function (m) { log.appendChild(h('div', { class: 'log adv', text: m })); });
 
-    /* 미배정 */
-    var unIds = unassignedIds(s, teams);
+    /* 편성 검사: 중복·미배정·인원/성별 균형·제약 조건 */
+    (function () {
+      var warns = [];
+      if (sr.dups) warns.push('한 학생이 두 팀에 들어 있어 중복 ' + sr.dups + '건을 제거했습니다.');
+      var sizes = teams.map(function (t) { return t.length; });
+      var mn = Math.min.apply(null, sizes), mx = Math.max.apply(null, sizes);
+      var absNote = ina.length ? ' 오늘 불참 ' + ina.length + '명을 뺀 결과일 수 있습니다 — 수업에 지장이 없으면 그대로 두고, 필요하면 학생을 끌어 옮기세요.' : '';
+      if (sizes.length && mx - mn > 1) warns.push('팀 인원 차이가 ' + (mx - mn) + '명입니다 (최소 ' + mn + ' · 최대 ' + mx + ').' + absNote);
+      if (o.genderBalance) ['남', '여'].forEach(function (g) {
+        var c = stats.teams.map(function (tm) { return g === '남' ? tm.male : tm.female; });
+        var d = Math.max.apply(null, c) - Math.min.apply(null, c);
+        if (c.length && d > 1) warns.push('팀별 ' + g + '학생 수 차이가 ' + d + '명입니다.' + absNote);
+      });
+      var teamOf = {}; teams.forEach(function (t, i) { t.forEach(function (id) { teamOf[id] = i; }); });
+      var nm = function (id) { return byId[id] ? label(byId[id]) : id; };
+      (o.together || []).forEach(function (pr) { if (teamOf[pr[0]] !== undefined && teamOf[pr[1]] !== undefined && teamOf[pr[0]] !== teamOf[pr[1]]) warns.push('함께 넣기 조건과 다릅니다: ' + nm(pr[0]) + ' + ' + nm(pr[1])); });
+      (o.apart || []).forEach(function (pr) { if (teamOf[pr[0]] !== undefined && teamOf[pr[0]] === teamOf[pr[1]]) warns.push('떨어뜨리기 조건과 다릅니다: ' + nm(pr[0]) + ' ↔ ' + nm(pr[1]) + ' (' + teamName(teamOf[pr[0]]) + ')'); });
+      Object.keys(o.pinned || {}).forEach(function (id) { if (teamOf[id] !== undefined && teamOf[id] !== +o.pinned[id]) warns.push('팀 고정과 다릅니다: ' + nm(id) + ' → ' + teamName(+o.pinned[id]) + '이어야 하는데 ' + teamName(teamOf[id]) + '에 있습니다.'); });
+      if (unIds.length) warns.push('미배정 ' + unIds.length + '명이 있습니다. 아래에서 자동 배치하거나 팀 카드로 끌어다 놓으세요.');
+      if (warns.length) warns.forEach(function (w) { checks.appendChild(h('div', { class: 'log', text: '⚠ ' + w })); });
+      else checks.appendChild(h('div', { class: 'checks-ok', text: '✔ 검사 통과 — 중복·미배정 없음 · 팀 인원 균형' + (o.genderBalance ? ' · 성별 균형' : '') + ' · 제약 조건 충족' }));
+    })();
+
+    /* 미배정 (편성 뒤 추가·복귀한 학생) */
     if (unIds.length) {
-      un.appendChild(h('div', { class: 'unassigned' }, h('b', { text: '미배정 ' + unIds.length + '명' }), h('span', { class: 'hint', text: ' — 편성 후 추가된 학생입니다. 팀 카드로 끌어다 놓거나 다시 편성하세요.' }),
+      un.appendChild(h('div', { class: 'unassigned' }, h('b', { text: '미배정 ' + unIds.length + '명' }), h('span', { class: 'hint', text: ' — 편성 뒤 추가되거나 참여로 바뀐 학생입니다. ' }),
+        s.studentView ? null : h('button', { class: 'btn small primary', type: 'button', title: '기존 팀은 그대로 두고, 인원·성별·균형 수치가 가장 좋아지는 팀에 넣습니다', onclick: function () { autoPlace(unIds); } }, '균형에 맞춰 자동 배치'),
+        s.studentView ? null : h('span', { class: 'hint', text: ' 또는 팀 카드로 끌어다 놓으세요.' }),
         h('ul', { class: 'members' }, unIds.map(function (id) { return memberEl(byId[id], s, -1); }))));
     }
 
@@ -843,6 +1164,15 @@
     }
     $('#btn-xlsx').addEventListener('click', function () { doXlsx(false); });
     $('#btn-xlsx-teacher').addEventListener('click', function () { doXlsx(true); });
+    $('#btn-xlsx-all').addEventListener('click', function () {
+      var s = St.get();
+      /* 현재 학급도 이름이 있으면 저장본을 갱신해 함께 포함 */
+      if (s.classLabel && s.students.length) St.putSaved(s.classLabel, s);
+      try { var r = X.exportAllClassesXlsx(St.listSaved()); toast(r.fname + ' 저장 — ' + r.count + '개 학급' + (r.skipped.length ? ' (편성 결과 없는 학급 제외: ' + r.skipped.join(', ') + ')' : '')); }
+      catch (e) { toast(e.message, true); }
+      render();
+    });
+    $('#result-note').addEventListener('change', function (e) { St.update(function (s) { if (s.result) s.result.note = e.target.value; }, { noUndo: true }); });
     $('#btn-json').addEventListener('click', function () { toast(X.exportSessionJSON(St.get()) + ' 저장'); });
     $('#json-input').addEventListener('change', function (e) {
       var f = e.target.files && e.target.files[0]; if (!f) return;
@@ -866,16 +1196,31 @@
     document.body.classList.toggle('student-view', !!s.studentView);
     $('#detail-toggle').checked = isDetail();
     document.body.classList.toggle('simple', !isDetail());
+    /* 학급 전환 선택: 저장된 학급 + 현재 학급 */
     var sel = $('#saved-select');
-    var cur = sel.value;
     clear(sel);
-    sel.appendChild(h('option', { value: '', text: '저장된 학급…' }));
-    St.listSaved().forEach(function (e) { sel.appendChild(h('option', { value: e.label, text: e.label + ' (' + (e.updatedAt || '').slice(0, 10) + ')' })); });
-    sel.value = cur && Array.prototype.some.call(sel.options, function (o) { return o.value === cur; }) ? cur : '';
+    var saved = St.listSaved(), curLbl = s.classLabel || '', hasCur = false;
+    sel.appendChild(h('option', { value: '', text: saved.length ? '학급 전환…' : '저장된 학급 없음' }));
+    saved.forEach(function (e) {
+      if (e.label === curLbl) hasCur = true;
+      var ss = e.session || {};
+      sel.appendChild(h('option', { value: e.label, text: e.label + ' (' + (ss.students || []).length + '명' + (ss.result ? ' · 편성됨' : '') + ')' }));
+    });
+    if (curLbl && !hasCur) sel.appendChild(h('option', { value: curLbl, text: curLbl + ' (현재 · 저장 안 됨)' }));
+    sel.value = curLbl && Array.prototype.some.call(sel.options, function (o) { return o.value === curLbl; }) ? curLbl : '';
+    sel.title = '저장된 학급으로 전환합니다. 현재 학급은 이름이 있으면 자동으로 저장됩니다.';
+    var del = $('#btn-del-class'); if (del) del.disabled = !(curLbl && hasCur);
     $('#btn-undo').disabled = !St.canUndo();
   }
   function bindTopEvents() {
-    $('#class-label').addEventListener('change', function (e) { St.update(function (s) { s.classLabel = e.target.value.trim(); }, { noUndo: true }); });
+    $('#class-label').addEventListener('change', function (e) {
+      var v = e.target.value.trim();
+      St.update(function (s) {
+        s.classLabel = v;
+        var pc = P.parseClass(v);
+        if (pc && pc.cls) s.classInfo = { grade: pc.grade, cls: pc.cls };   // "1-3" 처럼 적으면 그 반 자료만 들어오도록
+      }, { noUndo: true });
+    });
     $('#student-view-toggle').addEventListener('change', function (e) { selectedMember = null; St.update(function (s) { s.studentView = e.target.checked; }, { noUndo: true }); });
     $('#detail-toggle').addEventListener('change', function (e) { setDetail(e.target.checked); render(); });
     $('#btn-save-class').addEventListener('click', function () {
@@ -884,10 +1229,14 @@
       St.saveAs(lbl); toast('"' + lbl + '" 학급으로 저장했습니다.');
     });
     $('#saved-select').addEventListener('change', function (e) {
-      var lbl = e.target.value; if (!lbl) return;
-      if (confirm('"' + lbl + '" 학급 자료를 불러올까요? 현재 화면의 자료는 되돌리기로 복구할 수 있습니다.')) { St.loadSaved(lbl); toast('"' + lbl + '" 학급을 불러왔습니다.'); }
-      else if (confirm('"' + lbl + '" 저장본을 삭제할까요?')) { St.deleteSaved(lbl); render(); }
-      e.target.value = '';
+      var lbl = e.target.value;
+      if (!lbl || lbl === St.get().classLabel) return;
+      switchClass(lbl);
+    });
+    var delBtn = $('#btn-del-class');
+    if (delBtn) delBtn.addEventListener('click', function () {
+      var lbl = St.get().classLabel;
+      if (lbl && confirm('"' + lbl + '" 학급 저장본을 삭제할까요? (현재 화면의 자료는 그대로 남습니다)')) { St.deleteSaved(lbl); render(); toast('저장본을 삭제했습니다.'); }
     });
     $('#btn-undo').addEventListener('click', function () { if (!St.undo()) toast('되돌릴 작업이 없습니다.'); });
     $('#btn-reset').addEventListener('click', function () {
@@ -902,10 +1251,11 @@
   /* ============================================================ */
   function render() {
     var s = St.get();
-    var prep = prepare(s);
+    var prep = prepare(s);                                                                   // 참여 학생 (편성 대상)
+    var prepAll = St.inactiveStudents(s).length ? S.prepareStudents(s.students, s.options) : prep; // 명단 표시용 (불참 포함)
     renderTop(s);
     renderImportStatus(s);
-    renderRoster(s, prep);
+    renderRoster(s, prepAll);
     renderSettings(s, prep);
     renderResult(s, prep);
   }

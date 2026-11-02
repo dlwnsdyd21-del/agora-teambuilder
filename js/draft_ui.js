@@ -80,10 +80,12 @@
   function load() {
     St.load();
     session = St.get();
-    prepared = S.prepareStudents(session.students, session.options);
+    /* 결석·활동 제한·기록/심판 학생은 오늘 편성에서 제외 */
+    prepared = S.prepareStudents(St.activeStudents(session), session.options);
     byId = {}; prepared.forEach(function (p) { byId[p.id] = p; });
     prof = D.profiles(prepared);
-    $('#d-class').textContent = session.classLabel ? session.classLabel + ' 학급 · ' + prepared.length + '명' : prepared.length + '명';
+    var inactiveN = St.inactiveStudents(session).length;
+    $('#d-class').textContent = (session.classLabel ? session.classLabel + ' 학급 · ' : '') + prepared.length + '명' + (inactiveN ? ' (불참 ' + inactiveN + ')' : '');
     var d = session.draft;
     var ids = prepared.map(function (p) { return p.id; }).sort().join('|');
     if (d && d.sequence && d.studentKey === ids && (d.status === 'running' || d.status === 'done')) { draft = d; showStage(); }
@@ -437,7 +439,9 @@
     stopAutoplay(); stopTimer();
     var mode = draft.mode;
     St.update(function (s) {
-      s.result = { teams: draft.teams.map(function (t) { return t.slice(); }), seed: draft.seed, log: [MODE_LABEL[mode] + ' 결과입니다.'], builtAt: new Date().toISOString(), source: 'draft', mode: mode };
+      var teams = draft.teams.map(function (t) { return t.slice(); });
+      /* original: 편성 직후 상태 — 수동 조정 후 "편성 직후로 복원"에 사용 */
+      s.result = { teams: teams, original: teams.map(function (t) { return t.slice(); }), seed: draft.seed, log: [MODE_LABEL[mode] + ' 결과입니다.'], builtAt: new Date().toISOString(), source: 'draft', mode: mode, note: '' };
       s.manualEdits = false; s.teamNames = draft.teamNames.slice(); s.draft = draft;
     }, { noUndo: true });
     St.persistNow();

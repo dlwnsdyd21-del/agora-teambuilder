@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1f6feb">
   <title>PAPS + 인성 AI 팀빌딩</title>
   <link rel="icon" type="image/png" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="css/style.css?v=8">
+  <link rel="stylesheet" href="css/style.css?v=9">
 </head>
 <body>
   <header class="topbar">
@@ -18,9 +18,10 @@
       </div>
     </div>
     <div class="topbar-actions teacher-only">
-      <span class="adv inline-group"><label class="inline">학급 <input id="class-label" type="text" placeholder="예: 1-3" size="6"></label>
-      <select id="saved-select" title="저장된 학급 불러오기"><option value="">저장된 학급…</option></select>
-      <button id="btn-save-class" class="btn" title="현재 자료·설정·결과를 학급 이름으로 브라우저에 보관">학급 저장</button></span>
+      <span class="inline-group class-group"><label class="inline" title="학급 이름. &quot;1-3&quot;처럼 적으면 여러 반이 든 파일에서 이 반만 자동으로 들어옵니다">학급 <input id="class-label" type="text" placeholder="예: 1-3" size="6"></label>
+      <select id="saved-select" title="저장된 학급으로 전환 (현재 학급은 자동 저장)"><option value="">학급 전환…</option></select>
+      <button id="btn-save-class" class="btn" title="현재 자료·설정·결과를 학급 이름으로 이 브라우저에 보관">학급 저장</button>
+      <button id="btn-del-class" class="btn ghost adv" title="현재 학급의 저장본 삭제">저장본 삭제</button></span>
       <button id="btn-undo" class="btn ghost">되돌리기</button>
       <button id="btn-reset" class="btn ghost danger">새로 시작</button>
     </div>
@@ -44,8 +45,8 @@
     <!-- 1. 데이터 불러오기 -->
     <section id="sec-import" class="card teacher-only">
       <h2>1. 데이터 불러오기</h2>
-      <p class="desc simple-only">나이스 "학급별건강체력평가조회" 파일과 구글폼 응답 파일을 올리면 바로 명단이 만들어집니다.</p>
-      <p class="desc adv">PAPS 자료와 인성 설문 자료를 각각 올리면 열을 자동으로 읽어 <b>바로 명단에 반영</b>하고, <b>번호</b>(없으면 이름) 기준으로 합칩니다. 인식이 애매하거나 시트가 여러 개일 때만 확인 패널이 뜹니다.</p>
+      <p class="desc simple-only">나이스 "학급별건강체력평가조회" 파일과 구글폼 응답 파일을 올리면 바로 명단이 만들어집니다. 한 화면은 <b>한 학급</b>입니다 — 여러 반이 든 파일은 반 목록이 떠서 반을 고르거나 모든 반을 각각 저장할 수 있고, 다른 반은 상단 <b>학급 전환</b>으로 바꿔 가며 편성합니다.</p>
+      <p class="desc adv">PAPS 자료와 인성 설문 자료를 각각 올리면 열을 자동으로 읽어 <b>바로 명단에 반영</b>하고, 같은 학급 안에서 <b>번호</b>(없으면 이름) 기준으로 합칩니다. 학번(10130 = 1학년 1반 30번)·반 열·시트 이름에서 반을 읽어 <b>현재 학급과 맞는 반만</b> 들어오고, 다른 반은 제외되거나 반 목록에서 고릅니다. 인식이 애매하거나 시트가 여러 개일 때만 확인 패널이 뜹니다. 반영 뒤에는 건너뛴 행·번호 중복·이름 불일치 등 검증 결과가 함께 표시됩니다.</p>
       <div class="import-grid">
         <div class="import-panel" data-kind="paps">
           <h3>PAPS 자료 <span class="hint">나이스 학급별건강체력평가조회 xlsx(권장) · 학급별일괄입력 xlsx · PAPS 총점 표</span></h3>
@@ -103,12 +104,12 @@
           <button id="btn-add-row" class="btn ghost" type="button">+ 학생 추가</button>
         </div>
       </div>
-      <p class="desc simple-only">성별이 비어 있으면 채워 주세요. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다.</p>
+      <p class="desc simple-only">성별이 비어 있으면 채워 주세요. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다. 오늘 결석·활동 제한·기록/심판인 학생은 <b>참여</b> 칸을 바꾸면 편성에서 빠지고, 다시 "참여"로 바꾸면 원래 팀으로 돌아옵니다.</p>
       <p class="desc adv">PAPS 점수는 공식 기준표(학교건강검사규칙 별표 4·5)로 종목당 0~20점을 매겨 5영역 합계 <b>100점 만점</b>으로 계산합니다(성별·학년 필요). 성별이 없으면 학급 내 상대점수(<span class="badge warn">상대</span>)로, 자료가 없으면 학급 평균(<span class="badge warn">대체</span>)으로 채워 편성에 포함합니다. 원기록이 없는 학생은 PAPS 총점/등급을, 32문항이 없는 학생은 4덕목 점수를 직접 입력할 수 있습니다. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다.</p>
       <div class="table-wrap">
         <table class="roster" id="roster-table">
           <thead>
-            <tr><th>번호</th><th>이름</th><th>성별</th><th>PAPS 총점(100점)</th><th>성실</th><th>협동</th><th>정의</th><th>배려</th><th>상태</th><th></th></tr>
+            <tr><th title="파일의 출석번호 그대로 (결번은 비어 있음)">출석번호</th><th>이름</th><th>성별</th><th>PAPS 총점(100점)</th><th>성실</th><th>협동</th><th>정의</th><th>배려</th><th>참여 · 자료</th><th></th></tr>
           </thead>
           <tbody id="roster-body"></tbody>
         </table>
@@ -176,10 +177,16 @@
         </div>
       </div>
       <div id="result-summary"></div>
+      <div id="result-checks" class="teacher-only no-print"></div>
       <div id="result-log"></div>
+      <div id="result-absent"></div>
       <div id="unassigned"></div>
       <div id="teams" class="teams-grid"></div>
       <p class="hint teacher-only no-print adv" id="dnd-hint"></p>
+      <div id="result-note-wrap" class="result-note teacher-only no-print" hidden>
+        <label>수정 메모 <span class="hint">학생을 바꾼 이유 등 (교사용, 교사용 엑셀 균형표에 함께 저장)</span>
+          <textarea id="result-note" rows="2" placeholder="예: 12번·25번 교환 — 같은 팀 희망, 7번 부상으로 기록 담당"></textarea></label>
+      </div>
       <div id="balance"></div>
       <div id="charts" class="charts adv"></div>
     </section>
@@ -194,8 +201,9 @@
             <button id="btn-xlsx" class="btn primary" type="button">팀 명단 엑셀 (게시용)</button>
             <button id="btn-xlsx-teacher" class="btn adv" type="button">교사용 엑셀 (개인점수 포함)</button>
             <button id="btn-print2" class="btn ghost" type="button">인쇄</button>
+            <button id="btn-xlsx-all" class="btn ghost adv" type="button" title="학급 저장된 모든 반의 게시용 명단을 반마다 시트 하나로">저장된 모든 학급 명단 (한 파일)</button>
           </div>
-          <p class="hint adv">게시용에는 개인 점수가 들어가지 않습니다. 교사용 파일은 학생에게 공개하지 마세요.</p>
+          <p class="hint adv">게시용에는 개인 점수가 들어가지 않습니다(학급·편성일·수업일 칸 포함). 교사용 파일은 학생에게 공개하지 마세요.</p>
         </div>
         <div class="adv">
           <h3>세션 저장/불러오기</h3>
@@ -229,10 +237,10 @@
   <script src="js/paps_table.js?v=3"></script>
   <script src="js/scoring.js?v=3"></script>
   <script src="js/algorithm.js?v=4"></script>
-  <script src="js/parse.js?v=3"></script>
-  <script src="js/state.js?v=6"></script>
-  <script src="js/export.js?v=4"></script>
-  <script src="js/ui.js?v=12"></script>
+  <script src="js/parse.js?v=5"></script>
+  <script src="js/state.js?v=7"></script>
+  <script src="js/export.js?v=6"></script>
+  <script src="js/ui.js?v=14"></script>
   <script src="js/app.js?v=3"></script>
 </body>
 </html>

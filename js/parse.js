@@ -19,6 +19,7 @@
     { key: 'name', label: '이름', group: '기본' },
     { key: 'gender', label: '성별', group: '기본' },
     { key: 'grade', label: '학년', group: '기본' },
+    { key: 'cls', label: '반 (학급)', group: '기본' },
     { key: 'run', label: '왕복오래달리기(회)', group: 'PAPS 원기록' },
     { key: 'flex1', label: '앉아윗몸앞으로굽히기 1차', group: 'PAPS 원기록' },
     { key: 'flex2', label: '앉아윗몸앞으로굽히기 2차', group: 'PAPS 원기록' },
@@ -76,6 +77,10 @@
     var raw = cellStr(h), n = norm(raw);
     if (!n) return null;
     if (n === '타임스탬프' || n === 'timestamp' || n === '학교' || n === '학교명' || n === '이메일' || n === '이메일주소') return { field: 'ignore' };
+    /* NEIS 일괄입력 양식의 부속 열 */
+    if (n === '반코드' || n === '학년도' || n === '과정명' || n === '계열명' || n === '학과명') return { field: 'ignore' };
+    /* 반(학급) 열 — 여러 반이 한 파일에 있을 때 학급을 구분하는 데 사용 */
+    if (n === '반' || n === '반명' || n === '학급' || n === '학년반' || n === '학급명' || n === 'class') return { field: 'cls' };
     /* B문항 제외 */
     if (/^b\d{1,2}/.test(n)) return { field: 'ignore' };
     for (var b = 0; b < B_KEYS.length; b++) if (n.indexOf(B_KEYS[b]) >= 0) return { field: 'ignore' };
@@ -264,47 +269,92 @@
     x = Math.round(x);
     return x > 0 && x < 1000 ? x : null;
   }
-  /* 학번 "10130 홍길동" → {grade:1, cls:1, no:30, name:'홍길동'}; "30" → {no:30} */
+  /*
+   * 학번 "10130 홍길동" → {grade:1, cls:1, no:30, name:'홍길동'}; "1130 홍길동"(4자리) → 1학년 1반 30번;
+   * "1학년 3반 15번 홍길동" / "1-3-15 홍길동" / "30" → {no:30}.
+   * 3자리("130")나 6자리 이상처럼 반·번호를 확정할 수 없는 값은 null (오류 행으로 보고).
+   */
   function parseHakbun(v) {
     var s = cellStr(v);
     if (!s) return null;
-    var m = s.match(/^\s*(\d{4,5})\s*[-_ ]?\s*([^\d\s][^\s]*)?/);
+    var g, c, n, nm;
+    var mk = function (grade, cls, no, name) {
+      return { grade: grade >= 1 && grade <= 6 ? grade : null, cls: cls > 0 ? cls : null, no: no > 0 ? no : null, name: name ? name.trim() : null };
+    };
+    var m0 = s.match(/^\s*(\d)\s*학년\s*(\d{1,2})\s*반\s*(\d{1,2})\s*번?\s*([^\d\s][^\s]*)?/) || s.match(/^\s*(\d)\s*[-–/.]\s*(\d{1,2})\s*[-–/.]\s*(\d{1,2})\s*([^\d\s][^\s]*)?/);
+    if (m0) return mk(+m0[1], +m0[2], +m0[3], m0[4]);
+    var m = s.match(/^\s*(\d{4,5})(?!\d)\s*[-_ ]?\s*([^\d\s][^\s]*)?/);
     if (m) {
       var d = m[1];
-      var grade, cls, no;
-      if (d.length === 5) { grade = +d.charAt(0); cls = +d.slice(1, 3); no = +d.slice(3); }
-      else { grade = +d.charAt(0); cls = +d.charAt(1); no = +d.slice(2); }
-      return { grade: grade >= 1 && grade <= 6 ? grade : null, cls: cls || null, no: no > 0 ? no : null, name: m[2] ? m[2].trim() : null };
+      if (d.length === 5) { g = +d.charAt(0); c = +d.slice(1, 3); n = +d.slice(3); }
+      else { g = +d.charAt(0); c = +d.charAt(1); n = +d.slice(2); }
+      return mk(g, c, n, m[2]);
     }
-    var m2 = s.match(/^\s*(\d{1,2})\s*(?:번)?\s*([^\d\s]+)?/);
+    var m2 = s.match(/^\s*(\d{1,2})(?!\d)\s*(?:번)?\s*([^\d\s]+)?/);
     if (m2) return { grade: null, cls: null, no: +m2[1], name: m2[2] ? m2[2].trim() : null };
     return null;
   }
+  /* 반 열 값 "3", "3반", "1-3", "1학년 3반", "103"(1학년 3반) → {grade, cls} */
+  function parseClass(v) {
+    var s = cellStr(v);
+    if (!s) return null;
+    var m = s.match(/^\s*(\d)\s*학년\s*(\d{1,2})\s*반?\s*$/) || s.match(/^\s*(\d)\s*[-–/.]\s*(\d{1,2})\s*반?\s*$/);
+    if (m) return { grade: +m[1] >= 1 && +m[1] <= 6 ? +m[1] : null, cls: +m[2] || null };
+    m = s.match(/^\s*(\d)(\d{2})\s*$/);
+    if (m && +m[2] > 0) return { grade: +m[1] >= 1 && +m[1] <= 6 ? +m[1] : null, cls: +m[2] };
+    m = s.match(/^\s*(\d{1,2})\s*반?\s*$/);
+    if (m && +m[1] > 0) return { grade: null, cls: +m[1] };
+    return null;
+  }
+  /* 학급 구분 키: "1-3" (학년 미상이면 "?-3"), 반을 모르면 null */
+  function classKeyOf(rec) {
+    if (!rec || rec.cls === null || rec.cls === undefined) return null;
+    return (rec.grade !== null && rec.grade !== undefined ? rec.grade : '?') + '-' + rec.cls;
+  }
 
-  /* 표 + 매핑 → 학생 레코드 배열 */
-  function extractStudents(rows, det) {
-    var m = det.mapping, out = [];
+  /*
+   * 표 + 매핑 → { records, skipped:[{row, reason, text}], duplicates:[{key, no, rows}], classes:[{key, grade, cls, count}], noData, partial }
+   * row 는 엑셀 기준 1부터 세는 행 번호. 레코드에는 cls(반)와 _row 가 함께 들어감.
+   */
+  function extractReport(rows, det) {
+    var m = det.mapping, out = [], skipped = [], seen = {}, dupMap = {}, noData = 0, partial = 0;
     var meta = det.meta || {};
+    var sheetCls = meta.sheetClass || null;   // 시트 이름이 "3" / "1-3" 등 학급일 때
     function cell(row, key) { var c = m[key]; return (c === undefined || c < 0) ? null : row[c]; }
+    function skip(r, reason, text) { skipped.push({ row: r + 1, reason: reason, text: (text || '').slice(0, 40) }); }
     for (var r = det.headerRow + 1; r < rows.length; r++) {
       var row = rows[r];
       if (!row || !row.some(function (v) { return cellStr(v) !== ''; })) continue;
       /* 페이지마다 반복되는 헤더 행 건너뛰기 */
-      var noTxt = cellStr(cell(row, 'no')), nameTxt = cellStr(cell(row, 'name'));
-      if (/^(번호|학번|no)$/i.test(noTxt) || /^(성명|이름|학생성명|학생명)$/.test(nameTxt)) continue;
+      var noTxt = cellStr(cell(row, 'no')), nameTxt = cellStr(cell(row, 'name')), hbTxt = cellStr(cell(row, 'hakbun'));
+      if (/^(번호|학번|no)$/i.test(noTxt) || /^(성명|이름|학생성명|학생명)$/.test(nameTxt) || /^학번/.test(hbTxt)) continue;
       var no = parseNo(cell(row, 'no'));
       var name = nameTxt || null;
+      if (name && /^(평균|합계|소계|총계|계)$/.test(name)) { skip(r, '요약 행', name); continue; }
       var gradeVal = S.toNum(cell(row, 'grade'));
       var grade = (gradeVal !== null && gradeVal >= 1 && gradeVal <= 6) ? Math.round(gradeVal) : null;
+      var pc = parseClass(cell(row, 'cls'));
+      var cls = pc ? pc.cls : null;
+      if (grade === null && pc && pc.grade !== null) grade = pc.grade;
       var hb = parseHakbun(cell(row, 'hakbun'));
+      if (hbTxt && !hb) { skip(r, '학번 형식 인식 불가', hbTxt); continue; }
       if (hb) {
         if (no === null && hb.no !== null) no = hb.no;
         if (!name && hb.name) name = hb.name;
         if (grade === null && hb.grade !== null) grade = hb.grade;
+        if (cls === null && hb.cls !== null) cls = hb.cls;
       }
-      if (no === null && !name) continue;
+      if (no === null && !name) {
+        /* 헤더처럼 보이는 행(반복 헤더의 둘째 줄: 종목명·점수·등급)이나 숫자가 없는 글자 행은 조용히 건너뜀, 점수가 있는데 식별이 없으면 보고 */
+        var hdrLike = row.filter(function (v) { var c = classifyHeader(v); return c && c.field !== 'ignore'; }).length >= 3;
+        var hasNum = row.some(function (v) { return typeof v === 'number' || /^\s*-?\d+(\.\d+)?\s*$/.test(cellStr(v)); });
+        if (!hdrLike && hasNum) skip(r, '번호·이름 없음', row.map(cellStr).filter(Boolean).slice(0, 3).join(' '));
+        continue;
+      }
+      if (hb && hb.no === null && no === null) { skip(r, '학번에 번호 없음', hbTxt); continue; }
       if (grade === null && meta.gradeHint) grade = meta.gradeHint;
-      var rec = { no: no, name: name, gender: parseGender(cell(row, 'gender')), grade: grade,
+      if (cls === null && sheetCls) { cls = sheetCls.cls; if (grade === null && sheetCls.grade !== null) grade = sheetCls.grade; }
+      var rec = { no: no, name: name, gender: parseGender(cell(row, 'gender')), grade: grade, cls: cls, _row: r + 1,
                   papsRaw: null, papsGiven: null, papsNeis: null, items: null, virtuesGiven: null };
       var rawKeys = ['run', 'flex1', 'flex2', 'situp', 'pushup', 'grip', 'jump1', 'jump2', 'run50', 'height', 'weight', 'bmi'];
       var raw = {}, anyRaw = false;
@@ -324,7 +374,7 @@
       if (anyArea) rec.papsNeis = { areas: areas, total: pg, bmiCat: cellStr(cell(row, 'bmiCat')) || null };
       if (m.itemCount > 0) {
         var items = m.items.map(function (c) { return c < 0 ? null : likertValue(row[c]); });
-        if (items.some(function (v) { return v !== null; })) rec.items = items;
+        if (items.some(function (v) { return v !== null; })) { rec.items = items; if (items.some(function (v) { return v === null; })) partial++; }
       }
       var vg = {}, anyV = false;
       Q.VIRTUE_KEYS.forEach(function (k) {
@@ -332,10 +382,29 @@
         vg[k] = v; if (v !== null) anyV = true;
       });
       if (anyV) rec.virtuesGiven = vg;
+      if (!rec.papsRaw && rec.papsGiven === null && !rec.papsNeis && !rec.items && !rec.virtuesGiven) noData++;
+      /* 같은 반 안에서 번호가 겹치면 보고 (뒤 행이 앞 행을 덮어씀) */
+      var dk = (classKeyOf(rec) || '') + '#' + (no !== null ? 'n' + no : 'm' + norm(name));
+      if (seen[dk] !== undefined) { (dupMap[dk] = dupMap[dk] || { key: classKeyOf(rec), no: no, name: name, rows: [seen[dk]] }).rows.push(r + 1); }
+      else seen[dk] = r + 1;
       out.push(rec);
     }
-    return out;
+    /* 학급별 인원 */
+    var cm = {};
+    out.forEach(function (rec) {
+      var k = classKeyOf(rec) || '';
+      if (!cm[k]) cm[k] = { key: k || null, grade: rec.grade, cls: rec.cls, count: 0, minNo: null, maxNo: null };
+      cm[k].count++;
+      if (rec.no !== null) { if (cm[k].minNo === null || rec.no < cm[k].minNo) cm[k].minNo = rec.no; if (cm[k].maxNo === null || rec.no > cm[k].maxNo) cm[k].maxNo = rec.no; }
+    });
+    var classes = Object.keys(cm).map(function (k) { return cm[k]; }).sort(function (a, b) {
+      if (a.key === null) return 1; if (b.key === null) return -1;
+      return (a.grade || 0) - (b.grade || 0) || (a.cls || 0) - (b.cls || 0);
+    });
+    return { records: out, skipped: skipped, duplicates: Object.keys(dupMap).map(function (k) { return dupMap[k]; }), classes: classes, noData: noData, partial: partial };
   }
+  /* 표 + 매핑 → 학생 레코드 배열 (오류 행 보고 없이) */
+  function extractStudents(rows, det) { return extractReport(rows, det).records; }
 
   /* ---------- 텍스트 붙여넣기 (탭/쉼표, 따옴표 지원) ---------- */
   function parseDelimitedText(text) {
@@ -380,7 +449,7 @@
       var k = keyOf(rec);
       if (!k) return null;
       if (!map[k]) {
-        map[k] = { id: k, no: rec.no === undefined ? null : rec.no, name: rec.name || null, gender: null, grade: null,
+        map[k] = { id: k, no: rec.no === undefined ? null : rec.no, name: rec.name || null, gender: null, grade: null, cls: rec.cls === undefined ? null : rec.cls,
           papsRaw: null, papsGiven: null, papsNeis: null, items: null, virtuesGiven: null, source: { paps: false, survey: false } };
         order.push(k);
       }
@@ -421,9 +490,10 @@
   }
 
   var api = {
-    FIELD_DEFS: FIELD_DEFS, classifyHeader: classifyHeader, detectTable: detectTable, extractStudents: extractStudents,
+    FIELD_DEFS: FIELD_DEFS, classifyHeader: classifyHeader, detectTable: detectTable, extractStudents: extractStudents, extractReport: extractReport,
     parseDelimitedText: parseDelimitedText, readWorkbook: readWorkbook, mergeStudents: mergeStudents,
-    parseGender: parseGender, parseNo: parseNo, parseHakbun: parseHakbun, likertValue: likertValue, combineHeaders: combineHeaders
+    parseGender: parseGender, parseNo: parseNo, parseHakbun: parseHakbun, parseClass: parseClass, classKeyOf: classKeyOf,
+    likertValue: likertValue, combineHeaders: combineHeaders
   };
   root.AgoraParse = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

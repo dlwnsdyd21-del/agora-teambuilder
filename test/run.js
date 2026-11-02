@@ -326,6 +326,73 @@ test('likertValue / parseHakbun', () => {
   assert.deepStrictEqual(P.parseHakbun('30605'), { grade: 3, cls: 6, no: 5, name: null });
   assert.deepStrictEqual(P.parseHakbun('7번 김가명'), { grade: null, cls: null, no: 7, name: '김가명' });
   assert.strictEqual(P.parseHakbun(''), null);
+  // 반·번호를 확정할 수 없는 값은 null (3자리·6자리 이상) — 예전엔 "130"을 13번으로 잘못 읽었음
+  assert.strictEqual(P.parseHakbun('130 홍길동'), null);
+  assert.strictEqual(P.parseHakbun('202610130'), null);
+  assert.deepStrictEqual(P.parseHakbun('1130 김가명'), { grade: 1, cls: 1, no: 30, name: '김가명' });
+  assert.deepStrictEqual(P.parseHakbun('11030'), { grade: 1, cls: 10, no: 30, name: null });
+  assert.deepStrictEqual(P.parseHakbun('1학년 3반 15번 홍길동'), { grade: 1, cls: 3, no: 15, name: '홍길동' });
+  assert.deepStrictEqual(P.parseHakbun('1-3-15 홍길동'), { grade: 1, cls: 3, no: 15, name: '홍길동' });
+});
+test('parseClass / 반 열 인식 / classKeyOf', () => {
+  assert.deepStrictEqual(['3', '3반', '1-3', '1학년 3반', '103', '01', 'x', ''].map(P.parseClass),
+    [{ grade: null, cls: 3 }, { grade: null, cls: 3 }, { grade: 1, cls: 3 }, { grade: 1, cls: 3 }, { grade: 1, cls: 3 }, { grade: null, cls: 1 }, null, null]);
+  assert.deepStrictEqual(['반명', '반', '학급', '반코드', '학년도', '과정명'].map(h => P.classifyHeader(h).field), ['cls', 'cls', 'cls', 'ignore', 'ignore', 'ignore']);
+  assert.strictEqual(P.classKeyOf({ grade: 1, cls: 3 }), '1-3');
+  assert.strictEqual(P.classKeyOf({ grade: null, cls: 3 }), '?-3');
+  assert.strictEqual(P.classKeyOf({ grade: 1, cls: null }), null);
+  // NEIS 일괄입력: 반명 열 → cls
+  const rows = [['학년', '반명', '반코드', '번호', '학생성명', '왕복오래달리기(회)'], ['1', '3', '03', '1', '가', 30], ['1', '3', '03', '2', '나', 40]];
+  const recs = P.extractStudents(rows, P.detectTable(rows));
+  assert.strictEqual(recs[0].cls, 3); assert.strictEqual(recs[0].grade, 1);
+});
+test('extractReport: 여러 반 묶음, 오류 행 사유, 번호 중복, 반 미상', () => {
+  const header = ['타임스탬프', '학교', '학번'].concat(Q.ITEMS.map((t, i) => (i + 1) + '. ' + t));
+  const ans = new Array(32).fill('④ 그렇다');
+  const rows = [header,
+    ['t', 's', '10101 가', ...ans], ['t', 's', '10102 나', ...ans], ['t', 's', '10201 다', ...ans], ['t', 's', '10202 라', ...ans],
+    ['t', 's', '130 오류', ...ans], ['t', 's', '202610130 오류', ...ans], ['t', 's', '15 미상', ...ans], ['t', 's', '10102 나', ...ans],
+    ['t', 's', '10103 마', ...new Array(32).fill(null)], ['t', 's', '학번', ...ans]];
+  const det = P.detectTable(rows);
+  const rep = P.extractReport(rows, det);
+  assert.strictEqual(rep.records.length, 7, '정상 7건 (중복 재응답 포함, 헤더 반복 행 제외)');
+  assert.deepStrictEqual(rep.skipped.map(x => x.row + ':' + x.reason), ['6:학번 형식 인식 불가', '7:학번 형식 인식 불가']);
+  assert.strictEqual(rep.duplicates.length, 1); assert.deepStrictEqual(rep.duplicates[0].rows, [3, 9]); assert.strictEqual(rep.duplicates[0].key, '1-1');
+  assert.deepStrictEqual(rep.classes.map(c => c.key + ':' + c.count), ['1-1:4', '1-2:2', 'null:1']);
+  assert.strictEqual(rep.noData, 1);
+  const r = rep.records.find(x => x.name === '미상'); assert.strictEqual(r.cls, null); assert.strictEqual(r.no, 15);
+  // 요약 행 건너뜀
+  const rows2 = [['번호', '이름', 'PAPS 총점'], [1, '가', 80], ['', '평균', 80]];
+  const rep2 = P.extractReport(rows2, P.detectTable(rows2));
+  assert.strictEqual(rep2.records.length, 1); assert.strictEqual(rep2.skipped[0].reason, '요약 행');
+});
+test('구글폼 10개 반 330명 샘플: 반별 묶음·오류 행·중복·반 미상 보고', () => {
+  const XLSX = require(path.join(__dirname, '..', 'vendor', 'xlsx.full.min.js'));
+  const fs = require('fs');
+  const wb = XLSX.read(fs.readFileSync(path.join(__dirname, '..', 'sample', '인성설문_구글폼응답_10개반_330명.xlsx')), { type: 'buffer' });
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null, blankrows: false });
+  const det = P.detectTable(rows);
+  assert.deepStrictEqual(det.warnings, []);
+  const rep = P.extractReport(rows, det);
+  const known = rep.classes.filter(c => c.key);
+  assert.strictEqual(known.length, 10, '10개 반');
+  assert.ok(known.every(c => c.count === 33 || c.count === 34), '반마다 33명(1-1은 재응답 포함 34행)');
+  assert.strictEqual(known.reduce((a, c) => a + c.count, 0), 331);
+  assert.deepStrictEqual(known.map(c => c.key), ['1-1', '1-2', '1-3', '1-4', '1-5', '1-6', '1-7', '1-8', '1-9', '1-10']);
+  assert.strictEqual(rep.classes.find(c => !c.key).count, 1, '반 미상 1명');
+  assert.strictEqual(rep.skipped.length, 2); assert.ok(rep.skipped.every(x => x.reason === '학번 형식 인식 불가'));
+  assert.strictEqual(rep.duplicates.length, 1); assert.strictEqual(rep.duplicates[0].no, 5);
+  // 반별로 나누지 않고 번호로만 합치면 33~35명으로 뭉개짐 (피드백에서 보고된 현상)
+  assert.ok(P.mergeStudents([], rep.records).length <= 35);
+});
+test('state: 참여 상태 (결석·활동 제한·기록/심판 제외)', () => {
+  const St = require(path.join(__dirname, '..', 'js', 'state.js'));
+  const ses = St.newSession();
+  ses.students = [{ id: 'a' }, { id: 'b', status: 'absent' }, { id: 'c', status: 'role' }, { id: 'd', status: '' }, { id: 'e', status: 'active' }];
+  assert.deepStrictEqual(St.activeStudents(ses).map(s => s.id), ['a', 'd', 'e']);
+  assert.deepStrictEqual(St.inactiveStudents(ses).map(s => s.status), ['absent', 'role']);
+  assert.strictEqual(St.STATUS_LABEL.role, '기록·심판');
+  assert.strictEqual(St.hydrate({ students: [] }).classInfo, null);
 });
 test('나이스 학급별건강체력평가조회 양식: 2줄 헤더·반복 헤더·영역 점수·성별/학년 추정', () => {
   const XLSX = require(path.join(__dirname, '..', 'vendor', 'xlsx.full.min.js'));

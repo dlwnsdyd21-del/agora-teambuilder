@@ -103,6 +103,17 @@ footer { max-width: 1240px; margin: 0 auto; padding: 0 1.2rem 2rem; color: var(-
 .mapping .warn { color: var(--warn-ink); background: var(--warn-bg); padding: .3rem .5rem; border-radius: 6px; margin: .3rem 0; font-size: .84rem; }
 .help { margin-top: .8rem; font-size: .88rem; color: var(--muted); }
 .help summary { cursor: pointer; color: var(--accent); }
+/* 반영 뒤 검증 보고 (건너뛴 행·중복·불일치) */
+.import-detail { margin-top: .35rem; font-size: .84rem; color: var(--warn-ink); background: var(--warn-bg); border-radius: 8px; padding: .3rem .6rem; }
+.import-detail summary { cursor: pointer; font-weight: 600; }
+.import-detail ul { margin: .3rem 0 .1rem; padding-left: 1.2rem; color: var(--ink); }
+.import-detail li { margin: .1rem 0; }
+/* 여러 반 파일: 학급 선택 패널 */
+.class-panel .class-table { width: 100%; border-collapse: collapse; font-size: .88rem; margin-top: .4rem; }
+.class-panel .class-table th, .class-panel .class-table td { padding: .3rem .4rem; border-bottom: 1px solid #eef1f5; text-align: left; white-space: nowrap; }
+.class-panel .class-table th { background: #f2f5fa; color: var(--muted); font-weight: 600; }
+.class-panel .class-table tr.cur td { background: #eef4ff; }
+.class-panel .class-table td:last-child { text-align: right; }
 
 /* ---------- 명단 ---------- */
 .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
@@ -120,6 +131,12 @@ table.roster input::placeholder { color: #b5bfcc; }
 table.roster .gcell { display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap; }
 table.roster .gcell select { width: auto; min-width: 3.4em; }
 table.roster .gcell select.inferred { border-color: #e2c97e; background: #fffaf0; }
+/* 참여 상태 (결석·활동 제한·기록/심판은 편성 제외) */
+table.roster select.status-select { width: auto; min-width: 4.6em; margin-right: .3rem; border-color: var(--line); background: #fff; }
+table.roster select.status-select.off { border-color: #e2c97e; background: var(--warn-bg); color: var(--warn-ink); font-weight: 600; }
+table.roster tr.inactive td { background: #fafbfc; }
+table.roster tr.inactive td:not(:nth-last-child(2)):not(:last-child) { opacity: .55; }
+table.roster tr.inactive input[data-field=name] { text-decoration: line-through; }
 .badge { display: inline-block; font-size: .72rem; padding: .05rem .4rem; border-radius: 999px; background: #e9eef6; color: var(--muted); margin: 0 .1rem; }
 .badge.warn { background: var(--warn-bg); color: var(--warn-ink); }
 .badge.ok { background: #e3f6ec; color: var(--ok); }
@@ -182,6 +199,16 @@ table.roster .gcell select.inferred { border-color: #e2c97e; background: #fffaf0
 .member .pin { font-size: .75rem; }
 .unassigned { border: 1px dashed #c9a227; background: #fffaf0; border-radius: 10px; padding: .5rem .7rem; margin-bottom: .8rem; }
 .unassigned .members { flex-direction: row; flex-wrap: wrap; padding: .3rem 0 0; }
+.unassigned .btn { margin: 0 .3rem; vertical-align: middle; }
+/* 편성 검사 결과 · 불참 목록 · 수정 메모 */
+.checks-ok { font-size: .84rem; color: var(--ok); background: #e3f6ec; border-radius: 8px; padding: .4rem .7rem; margin-bottom: .6rem; }
+.absent { font-size: .88rem; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; padding: .45rem .7rem; margin-bottom: .8rem; background: #fbfcfe; }
+.absent b { color: var(--ink); }
+.absent .badge { font-size: .8rem; background: #fff; border: 1px solid var(--line); color: var(--ink); }
+.result-note { margin-top: .8rem; }
+.result-note label { display: flex; flex-direction: column; gap: .25rem; font-weight: 600; font-size: .9rem; }
+.result-note textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: .45rem .6rem; font-weight: 400; resize: vertical; }
+.class-group select { max-width: 13em; padding: .35rem .4rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 
 .balance { margin-top: 1rem; overflow: auto; }
 .balance table { border-collapse: collapse; width: 100%; font-size: .86rem; }
