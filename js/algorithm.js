@@ -436,6 +436,7 @@
    * 반환: { teams:[[ids]], stats, equity, seed, log, meta }
    */
   function buildTeams(inputStudents, options) {
+    if (options && options.genderSeparate) return buildTeamsSeparate(inputStudents, options);
     options = Object.assign({}, DEFAULTS, options || {});
     var log = [];
     var K = Math.max(1, Math.floor(options.teamCount || 1));
@@ -482,6 +483,87 @@
     };
   }
 
+  /* ---------- 남녀 따로 편성 (남자 팀 Km개 + 여자 팀 Kf개) ---------- */
+  /* 팀 번호 t 의 기본 이름: 보통 "1팀", 남녀 따로면 "남 1팀"/"여 1팀" */
+  function teamLabel(t, split) {
+    if (split && (split['남'] | 0) + (split['여'] | 0) > 0) {
+      var Km = split['남'] | 0;
+      return t < Km ? '남 ' + (t + 1) + '팀' : '여 ' + (t - Km + 1) + '팀';
+    }
+    return (t + 1) + '팀';
+  }
+  /*
+   * 남녀 따로: 남학생은 teamCountM 개, 여학생은 teamCountF 개 팀으로 각각 buildTeams.
+   * 팀 번호 0..Km-1 = 남자 팀, Km.. = 여자 팀. 고정·함께·떨어뜨리기는 같은 성별 안에서만 적용.
+   * 반환은 buildTeams 와 같되 stats 대신 groups(성별 그룹별 통계), meta.separate = {남:Km, 여:Kf}
+   */
+  function buildTeamsSeparate(inputStudents, options) {
+    var opts = Object.assign({}, DEFAULTS, options || {}, { genderSeparate: false });
+    var Km = Math.max(1, Math.floor(opts.teamCountM || 1)), Kf = Math.max(1, Math.floor(opts.teamCountF || 1));
+    var log = [], boys = [], girls = [], unknown = [];
+    (inputStudents || []).forEach(function (s) { var g = gKey(s.gender); (g === '남' ? boys : g === '여' ? girls : unknown).push(s); });
+    if (unknown.length) {
+      log.push('성별 미상 ' + unknown.length + '명은 인원이 많은 쪽(' + (boys.length >= girls.length ? '남자' : '여자') + ' 팀)에 넣었습니다. 명단에서 성별을 채우면 정확해집니다.');
+      (boys.length >= girls.length ? boys : girls).push.apply(boys.length >= girls.length ? boys : girls, unknown);
+    }
+    var nameOf = function (id) { var s = (inputStudents || []).find(function (x) { return String(x.id) === String(id); }); return s ? ((s.no !== null && s.no !== undefined ? s.no + ' ' : '') + (s.name || id)) : id; };
+    function sub(list, K, offset, label) {
+      var ids = {}; list.forEach(function (s) { ids[s.id] = true; });
+      var pinned = {};
+      Object.keys(opts.pinned || {}).forEach(function (id) {
+        if (!ids[id]) return;
+        var t = parseInt(opts.pinned[id], 10);
+        if (t >= offset && t < offset + K) pinned[id] = t - offset;
+        else log.push(label + ': ' + nameOf(id) + ' 학생의 고정 팀(' + teamLabel(t, { 남: Km, 여: Kf }) + ')이 성별과 맞지 않아 고정을 무시했습니다.');
+      });
+      var pairs = function (key, word) {
+        return (opts[key] || []).filter(function (pr) {
+          var a = ids[pr[0]], b = ids[pr[1]];
+          if (a && b) return true;
+          if (a && !b) log.push(nameOf(pr[0]) + ' · ' + nameOf(pr[1]) + ' ' + word + ' 조건은 성별이 달라 적용할 수 없습니다.');
+          return false;
+        });
+      };
+      var o = Object.assign({}, opts, { teamCount: K, genderBalance: false, pinned: pinned, together: pairs('together', '함께 넣기'), apart: pairs('apart', '떨어뜨리기') });
+      var res = buildTeams(list, o);
+      res.log.forEach(function (m) { if (m !== '학생이 없습니다.') log.push(label + ': ' + m); });
+      return res;
+    }
+    var rm = sub(boys, Km, 0, '남자 팀'), rf = sub(girls, Kf, Km, '여자 팀');
+    var teams = rm.teams.concat(rf.teams);
+    var split = { 남: Km, 여: Kf };
+    var ev = evaluateGroups(inputStudents || [], teams, split);
+    return {
+      teams: teams, stats: null, groups: ev.groups, equity: ev.equity, seed: opts.seed, log: log,
+      meta: { separate: split, genderBalance: false, restarts: opts.restarts }
+    };
+  }
+  /*
+   * 성별 그룹별 통계. split 이 없으면 전체 한 그룹.
+   * 반환 { groups:[{gender, label, idx:[팀번호], teams:[[ids]], stats, size}], equity }
+   */
+  function evaluateGroups(inputStudents, teams, split) {
+    if (!split || (split['남'] | 0) + (split['여'] | 0) === 0) {
+      var st0 = evaluateTeams(inputStudents, teams);
+      return { groups: [{ gender: null, label: '', idx: teams.map(function (_, i) { return i; }), teams: teams, stats: st0, students: inputStudents || [], size: teams.reduce(function (a, t) { return a + t.length; }, 0) }], equity: st0.equity, Dp: st0.Dp, Dc: st0.Dc };
+    }
+    var Km = split['남'] | 0, Kf = split['여'] | 0;
+    var groups = [], totalN = 0, eqSum = 0;
+    [['남', 0, Km, '남자 팀'], ['여', Km, Km + Kf, '여자 팀']].forEach(function (g) {
+      if (g[2] - g[1] <= 0) return;
+      var idx = []; for (var t = g[1]; t < g[2]; t++) idx.push(t);
+      var gTeams = idx.map(function (t) { return teams[t] || []; });
+      var members = {}; gTeams.forEach(function (tm) { tm.forEach(function (id) { members[id] = true; }); });
+      /* 기준 집단 = 그 성별 전체(+ 그 팀들에 들어 있는 학생) — 팀 간 비교는 같은 성별 안에서 */
+      var studs = (inputStudents || []).filter(function (s) { return members[s.id] || gKey(s.gender) === g[0]; });
+      var st = evaluateTeams(studs, gTeams);
+      var n = gTeams.reduce(function (a, tm) { return a + tm.length; }, 0);
+      groups.push({ gender: g[0], label: g[3], idx: idx, teams: gTeams, stats: st, students: studs, size: n });
+      eqSum += st.equity * n; totalN += n;
+    });
+    return { groups: groups, equity: totalN ? Math.round(eqSum / totalN) : 0 };
+  }
+
   /* 수동 조정 후 통계만 다시 계산. teams: [[ids]] */
   function evaluateTeams(inputStudents, teams) {
     var students = normalizeStudents(inputStudents || []);
@@ -497,7 +579,8 @@
   }
 
   var api = {
-    buildTeams: buildTeams, evaluateTeams: evaluateTeams, DEFAULTS: DEFAULTS, mulberry32: mulberry32,
+    buildTeams: buildTeams, buildTeamsSeparate: buildTeamsSeparate, evaluateTeams: evaluateTeams, evaluateGroups: evaluateGroups, teamLabel: teamLabel,
+    DEFAULTS: DEFAULTS, mulberry32: mulberry32,
     _internal: { teamSizes: teamSizes, genderQuotas: genderQuotas }
   };
   root.AgoraAlgorithm = api;

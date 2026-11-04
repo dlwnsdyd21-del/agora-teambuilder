@@ -43,7 +43,9 @@
     opts = opts || {};
     var byId = {};
     prepared.forEach(function (s) { byId[s.id] = s; });
-    var teamName = function (t) { return (opts.teamNames && opts.teamNames[t]) || (t + 1) + '팀'; };
+    var A = root.AgoraAlgorithm;
+    var split = opts.split || (session.result && session.result.split) || null;
+    var teamName = function (t) { return (opts.teamNames && opts.teamNames[t]) || (A ? A.teamLabel(t, split) : (t + 1) + '팀'); };
     /* 게시용 시트는 번호순 — 체력 순서가 드러나지 않도록 */
     var byNo = function (ids) {
       return ids.slice().sort(function (a, b) {
@@ -81,18 +83,24 @@
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wide), '팀별 명단');
 
-    /* 3) 균형표 (팀 단위 통계) */
+    /* 3) 균형표 (팀 단위 통계). 남녀 따로면 성별 그룹마다 블록 */
     if (stats) {
-      var bal = [['팀', '인원', '남', '여', 'PAPS 평균(100점 만점)'].concat(VK.map(function (k) { return k + ' 평균(5점 만점)'; }))];
-      stats.teams.forEach(function (tm, t) {
-        bal.push([teamName(t), tm.size, tm.male, tm.female, r2(tm.meanPaps)].concat(VK.map(function (k) { return r2(tm.meanVirtues[k]); })));
+      var groups = (opts.groups && opts.groups.length) ? opts.groups : [{ label: '', idx: teams.map(function (_, i) { return i; }), stats: stats }];
+      var bal = [];
+      groups.forEach(function (g) {
+        if (g.label) bal.push([g.label + ' (같은 성별 안에서 비교)']);
+        bal.push(['팀', '인원', '남', '여', 'PAPS 평균(100점 만점)'].concat(VK.map(function (k) { return k + ' 평균(5점 만점)'; })));
+        g.stats.teams.forEach(function (tm, j) {
+          bal.push([teamName(g.idx[j]), tm.size, tm.male, tm.female, r2(tm.meanPaps)].concat(VK.map(function (k) { return r2(tm.meanVirtues[k]); })));
+        });
+        bal.push(['팀 평균 범위(최대-최소)', '', '', '', r2(g.stats.metrics.PAPS.range)].concat(VK.map(function (k) { return r2(g.stats.metrics[k].range); })));
+        bal.push(['팀 평균 표준편차', '', '', '', r2(g.stats.metrics.PAPS.sd)].concat(VK.map(function (k) { return r2(g.stats.metrics[k].sd); })));
+        bal.push(['학생 표준편차', '', '', '', r2(g.stats.metrics.PAPS.studentSd)].concat(VK.map(function (k) { return r2(g.stats.metrics[k].studentSd); })));
+        if (g.label) bal.push([g.label + ' 공정성 점수', g.stats.equity]);
+        bal.push([]);
       });
-      bal.push([]);
-      bal.push(['팀 평균 범위(최대-최소)', '', '', '', r2(stats.metrics.PAPS.range)].concat(VK.map(function (k) { return r2(stats.metrics[k].range); })));
-      bal.push(['팀 평균 표준편차', '', '', '', r2(stats.metrics.PAPS.sd)].concat(VK.map(function (k) { return r2(stats.metrics[k].sd); })));
-      bal.push(['학생 표준편차', '', '', '', r2(stats.metrics.PAPS.studentSd)].concat(VK.map(function (k) { return r2(stats.metrics[k].studentSd); })));
-      bal.push([]);
-      bal.push(['공정성 점수', stats.equity]);
+      bal.push(['공정성 점수', opts.equity !== undefined ? opts.equity : stats.equity]);
+      if (split) bal.push(['편성 단위', '남녀 따로 (남자 팀 ' + split['남'] + '개 · 여자 팀 ' + split['여'] + '개)']);
       var impP = prepared.filter(function (s) { return s.papsImputed; }).length, impV = prepared.filter(function (s) { return s.virtueImputed; }).length;
       bal.push(['결측 대체(학급 평균으로 채움)', 'PAPS ' + impP + '명 · 인성 ' + impV + '명']);
       bal.push(['편성 시드', session.result ? session.result.seed : '']);
@@ -149,8 +157,10 @@
       var byId = {}; prepared.forEach(function (p) { byId[p.id] = p; });
       var seen = {};
       var teams = ses.result.teams.map(function (t) { return t.filter(function (id) { if (!byId[id] || seen[id]) return false; seen[id] = true; return true; }); });
-      var stats = A.evaluateTeams(prepared, teams);
-      var tn = function (t) { return (ses.teamNames && ses.teamNames[t]) || (t + 1) + '팀'; };
+      var ev = A.evaluateGroups(prepared, teams, ses.result.split || null);
+      var stats = { equity: ev.equity, teams: [] };
+      ev.groups.forEach(function (g) { g.stats.teams.forEach(function (tm) { stats.teams.push(tm); }); });
+      var tn = function (t) { return (ses.teamNames && ses.teamNames[t]) || A.teamLabel(t, ses.result.split || null); };
       var rows = [[e.label + ' 학급 팀 명단', '편성 ' + localTime(ses.result.builtAt, true), '수업일:'], ['팀', '번호', '이름', '성별']];
       teams.forEach(function (ids, t) {
         ids.slice().sort(function (a, b) { return (byId[a].no === null ? 1e9 : byId[a].no) - (byId[b].no === null ? 1e9 : byId[b].no); })

@@ -151,6 +151,11 @@ table.roster tr.inactive input[data-field=name] { text-decoration: line-through;
 .settings-grid input[type=number], .settings-grid select { padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 8px; max-width: 320px; font-weight: 400; }
 .settings-grid input[type=range] { accent-color: var(--accent); max-width: 320px; }
 .settings-grid input[type=checkbox] { accent-color: var(--accent); width: 1.1em; height: 1.1em; }
+.split-counts { display: flex; gap: .8rem 1.2rem; flex-wrap: wrap; align-items: flex-start; grid-column: 1 / -1; padding: .5rem .7rem; border: 1px dashed var(--line); border-radius: 10px; background: #fbfcfe; }
+.split-counts label { display: flex; flex-direction: column; gap: .25rem; font-weight: 600; font-size: .9rem; }
+.split-counts .hint { flex: 1 1 100%; }
+.split-counts .hint.warn-text { color: var(--warn-ink); }
+.teams-grid .group-title, .charts .group-title { grid-column: 1 / -1; margin: .4rem 0 0; font-size: 1rem; color: var(--muted); border-bottom: 1px dashed var(--line); padding-bottom: .2rem; }
 .constraints { margin-top: 1rem; border-top: 1px dashed var(--line); padding-top: .8rem; }
 .cons-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .8rem; }
 .cons-box { border: 1px solid var(--line); border-radius: 10px; padding: .6rem .7rem; background: #fbfcfe; }

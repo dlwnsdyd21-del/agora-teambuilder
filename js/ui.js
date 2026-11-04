@@ -51,7 +51,14 @@
     toastTimer = setTimeout(function () { el.hidden = true; }, isError ? 5000 : 2800);
   }
   function teamColor(t) { return TEAM_COLORS[t % TEAM_COLORS.length]; }
-  function teamName(t) { var s = St.get(); return (s.teamNames && s.teamNames[t]) || ((t + 1) + '팀'); }
+  /* 남녀 따로 설정: {남: Km, 여: Kf} 또는 null (결과가 있으면 결과 기준, 없으면 설정 기준) */
+  function splitOf(s) {
+    if (s.result && s.result.split) return s.result.split;
+    if (s.result) return null;
+    return s.options.genderSeparate ? { 남: Math.max(1, s.options.teamCountM | 0), 여: Math.max(1, s.options.teamCountF | 0) } : null;
+  }
+  function totalTeamCount(s) { var sp = splitOf(s); return sp ? sp['남'] + sp['여'] : Math.max(1, s.options.teamCount | 0); }
+  function teamName(t) { var s = St.get(); return (s.teamNames && s.teamNames[t]) || A.teamLabel(t, splitOf(s)); }
   function label(s) { return (s.no !== null && s.no !== undefined ? s.no + ' ' : '') + (s.name || '(이름 없음)'); }
   function keyOf(r) {
     if (r.no !== null && r.no !== undefined && r.no !== '') return 'n' + r.no;
@@ -710,6 +717,22 @@
     $$('input[name=draftMode]').forEach(function (r) { r.checked = (o.draftMode || 'auto') === r.value; });
     var N = prep.length, K = Math.max(1, o.teamCount | 0), inact = s.students.length - N;
     $('#team-size-hint').textContent = N ? ('참여 학생 ' + N + '명' + (inact ? ' (불참 ' + inact + '명 제외)' : '') + ' → 팀당 ' + Math.floor(N / K) + (N % K ? '~' + Math.ceil(N / K) : '') + '명') : '';
+    /* 남녀 따로 편성 */
+    var sep = !!o.genderSeparate;
+    setIfIdle($('#opt-genderSeparate'), sep, 'checked');
+    setIfIdle($('#opt-teamCountM'), o.teamCountM || Math.max(1, Math.round(K / 2)));
+    setIfIdle($('#opt-teamCountF'), o.teamCountF || Math.max(1, Math.round(K / 2)));
+    $('#split-counts').hidden = !sep;
+    $('#teamCount-wrap').hidden = sep;
+    $('#genderBalance-wrap').hidden = sep;
+    var sw = $('#split-hint');
+    if (sep) {
+      var nm = prep.filter(function (p) { return p.gender === '남'; }).length, nf = prep.filter(function (p) { return p.gender === '여'; }).length, nu = N - nm - nf;
+      var Km = Math.max(1, o.teamCountM | 0), Kf = Math.max(1, o.teamCountF | 0);
+      var per = function (n, k) { return n ? Math.floor(n / k) + (n % k ? '~' + Math.ceil(n / k) : '') : 0; };
+      sw.textContent = N ? ('남학생 ' + nm + '명 → 남자 팀 ' + Km + '개 (팀당 ' + per(nm, Km) + '명) · 여학생 ' + nf + '명 → 여자 팀 ' + Kf + '개 (팀당 ' + per(nf, Kf) + '명). 팀 간 균형은 같은 성별 안에서 맞춥니다.' + (nu ? ' ⚠ 성별 미상 ' + nu + '명 — 2단계 명단에서 성별을 채워야 편성할 수 있습니다.' : '')) : '';
+      sw.classList.toggle('warn-text', nu > 0);
+    } else sw.textContent = '';
     /* 자료 누락 경고 */
     var missV = prep.filter(function (p) { return p.virtueImputed; }).length, missP = prep.filter(function (p) { return p.papsImputed; }).length;
     var mw = $('#missing-warn');
@@ -729,6 +752,9 @@
     }
     $('#opt-teamCount').addEventListener('change', upd('teamCount', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : Math.min(20, v); }));
     $('#opt-genderBalance').addEventListener('change', upd('genderBalance', function (el) { return el.checked; }));
+    $('#opt-genderSeparate').addEventListener('change', upd('genderSeparate', function (el) { return el.checked; }));
+    $('#opt-teamCountM').addEventListener('change', upd('teamCountM', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : Math.min(12, v); }));
+    $('#opt-teamCountF').addEventListener('change', upd('teamCountF', function (el) { var v = parseInt(el.value, 10); return isNaN(v) || v < 1 ? 1 : Math.min(12, v); }));
     $('#opt-papsTolerance').addEventListener('input', function (e) { $('#tau-value').textContent = Number(e.target.value).toFixed(1); });
     $('#opt-papsTolerance').addEventListener('change', upd('papsTolerance', function (el) { return parseFloat(el.value); }));
     $('#opt-includeBmi').addEventListener('change', upd('includeBmi', function (el) { return el.checked; }));
@@ -786,7 +812,7 @@
     });
     if (!Object.keys(pinned).length) ul.appendChild(h('li', { class: 'hint', text: '특정 팀에 고정할 학생' }));
     var selS = studentSelect(s);
-    var selT = h('select', null, Array.from({ length: Math.max(1, o.teamCount | 0) }, function (_, t) { return h('option', { value: t, text: teamName(t) }); }));
+    var selT = h('select', null, Array.from({ length: totalTeamCount(s) }, function (_, t) { return h('option', { value: t, text: teamName(t) }); }));
     var addP = h('button', { class: 'btn small', type: 'button', onclick: function () {
       if (!selS.value) { toast('학생을 고르세요.', true); return; }
       St.update(function (ss) { ss.options.pinned = ss.options.pinned || {}; ss.options.pinned[selS.value] = +selT.value; });
@@ -807,7 +833,7 @@
     var res = A.buildTeams(prep, opt);
     St.update(function (ss) {
       ss.options.seed = opt.seed;
-      ss.result = { teams: res.teams, seed: res.seed, log: res.log, builtAt: new Date().toISOString(), meta: res.meta, source: 'auto' };
+      ss.result = { teams: res.teams, original: res.teams.map(function (t) { return t.slice(); }), seed: res.seed, log: res.log, builtAt: new Date().toISOString(), meta: res.meta, source: 'auto', split: (res.meta && res.meta.separate) || null, note: '' };
       ss.manualEdits = false;
     });
     toast('팀 편성 완료 (공정성 ' + res.equity + '점)');
@@ -852,16 +878,20 @@
       keepOriginal(s);
       var prep = prepare(s), byId = {}; prep.forEach(function (p) { byId[p.id] = p; });
       var tau = Number(s.options.papsTolerance) || 3;
-      var K = Math.max(s.result.teams.length, s.options.teamCount | 0);
+      var split = s.result.split || null;
+      var K = Math.max(s.result.teams.length, split ? (split['남'] | 0) + (split['여'] | 0) : (s.options.teamCount | 0));
       while (s.result.teams.length < K) s.result.teams.push([]);
       ids.forEach(function (id) {
         var p = byId[id]; if (!p) return;
         var teams = s.result.teams, best = -1, bestKey = null;
         for (var t = 0; t < teams.length; t++) {
+          /* 남녀 따로: 같은 성별 팀에만 */
+          if (split && ((p.gender === '여' ? '여' : '남') === '남') !== (t < (split['남'] | 0))) continue;
           var trial = teams.map(function (x, i) { return i === t ? x.concat([id]) : x; });
-          var st = A.evaluateTeams(prep, trial);
+          var st = split ? A.evaluateGroups(prep, trial, split).groups.find(function (g) { return g.idx.indexOf(t) >= 0; }).stats : A.evaluateTeams(prep, trial);
           var size = trial[t].filter(function (x) { return byId[x]; }).length;
-          var gcnt = (s.options.genderBalance && p.gender) ? (p.gender === '남' ? st.teams[t].male : st.teams[t].female) : 0;
+          var tl = split ? (t < (split['남'] | 0) ? t : t - (split['남'] | 0)) : t;   // 그룹 안 팀 번호
+          var gcnt = (s.options.genderBalance && !split && p.gender) ? (p.gender === '남' ? st.teams[tl].male : st.teams[tl].female) : 0;
           var J = 1000 * Math.max(0, st.Dp - tau) + st.Dc + 0.01 * st.Dp;
           var key = [size, gcnt, J];
           if (best < 0 || key[0] < bestKey[0] || (key[0] === bestKey[0] && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2] - 1e-12)))) { best = t; bestKey = key; }
@@ -898,22 +928,27 @@
       return;
     }
     if (noteWrap) { noteWrap.hidden = false; setIfIdle($('#result-note'), (s.result && s.result.note) || ''); }
-    var stats = A.evaluateTeams(prep, teams);
+    var split = s.result.split || null;
+    var ev = A.evaluateGroups(prep, teams, split);
+    var stats = ev.groups[0].stats;   // 남녀 따로가 아니면 전체 통계
     var o = s.options;
     var unIds = unassignedIds(s, teams);
 
     /* 요약 */
     summary.className = 'result-summary';
-    summary.appendChild(h('div', { class: 'equity', title: 'PAPS 팀 평균 범위와 4덕목 팀 평균 편차가 작을수록 높습니다 (0~100)' },
-      h('span', { class: 'score', text: stats.equity }), h('span', { class: 'label', html: '공정성<br>점수' })));
+    summary.appendChild(h('div', { class: 'equity', title: 'PAPS 팀 평균 범위와 4덕목 팀 평균 편차가 작을수록 높습니다 (0~100)' + (split ? '. 남녀 따로 편성은 성별 그룹별 점수의 인원 가중 평균' : '') },
+      h('span', { class: 'score', text: ev.equity }), h('span', { class: 'label', html: '공정성<br>점수' })));
     summary.appendChild(h('div', { class: 'kv' },
-      h('div', null, '팀 ', h('b', { text: teams.length }), '개 · 학생 ', h('b', { text: prep.length }), '명',
+      h('div', null, split ? ['남자 팀 ', h('b', { text: split['남'] }), '개 · 여자 팀 ', h('b', { text: split['여'] }), '개'] : ['팀 ', h('b', { text: teams.length }), '개'], ' · 학생 ', h('b', { text: prep.length }), '명',
+        split ? h('span', { class: 'badge', text: '남녀 따로 편성' }) : null,
         s.manualEdits ? h('span', { class: 'badge warn', text: '수동 조정됨' }) : h('span', { class: 'badge ok', text: '시드 ' + s.result.seed }),
         s.result.source === 'draft' ? h('span', { class: 'badge', text: ({ auto: '교사 편성', pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과' }) : null,
         (s.manualEdits && s.result.original && !s.studentView) ? h('button', { class: 'btn ghost small', type: 'button', style: 'margin-left:.4rem', title: '수동 조정을 모두 되돌려 편성 직후(추천안) 상태로', onclick: restoreOriginal }, '편성 직후로 복원') : null),
-      h('div', { class: 'teacher-only adv' }, 'PAPS 팀 평균 범위 ', h('b', { text: fmt(stats.Dp, 1) }), '점 (허용 ' + Number(o.papsTolerance).toFixed(1) + '점, 100점 만점)',
-        ' · 인성 편차 지수 ', h('b', { text: fmt(stats.Dc, 2) }), h('span', { class: 'hint', text: ' (4덕목 팀 평균 SD ÷ 학생 SD 합, 작을수록 균등)' })),
-      h('div', null, '성별 균형 ' + (o.genderBalance ? '켬' : '끔') + ' · 팀 평균 PAPS 점수·4덕목이 서로 비슷할수록 공정한 편성입니다.'),
+      split
+        ? h('div', { class: 'teacher-only' }, ev.groups.map(function (g) { return h('span', { style: 'margin-right:.8rem' }, g.label + ' 공정성 ', h('b', { text: g.stats.equity }), h('span', { class: 'adv', text: ' (PAPS 범위 ' + fmt(g.stats.Dp, 1) + '점 · 인성 편차 ' + fmt(g.stats.Dc, 2) + ')' })); }))
+        : h('div', { class: 'teacher-only adv' }, 'PAPS 팀 평균 범위 ', h('b', { text: fmt(stats.Dp, 1) }), '점 (허용 ' + Number(o.papsTolerance).toFixed(1) + '점, 100점 만점)',
+          ' · 인성 편차 지수 ', h('b', { text: fmt(stats.Dc, 2) }), h('span', { class: 'hint', text: ' (4덕목 팀 평균 SD ÷ 학생 SD 합, 작을수록 균등)' })),
+      h('div', null, (split ? '남녀 따로 편성 (같은 성별 안에서 균형)' : '성별 균형 ' + (o.genderBalance ? '켬' : '끔')) + ' · 팀 평균 PAPS 점수·4덕목이 서로 비슷할수록 공정한 편성입니다.'),
       (function () {
         var impP = prep.filter(function (p) { return p.papsImputed; }).length, impV = prep.filter(function (p) { return p.virtueImputed; }).length;
         return (impP || impV) ? h('div', { class: 'teacher-only' }, h('span', { class: 'badge warn', text: '대체' }), ' PAPS ' + impP + '명 · 인성 ' + impV + '명은 자료가 없어 학급 평균으로 채웠습니다. 그만큼 균형 수치가 실제보다 좋게 보일 수 있습니다.') : null;
@@ -928,12 +963,24 @@
       var sizes = teams.map(function (t) { return t.length; });
       var mn = Math.min.apply(null, sizes), mx = Math.max.apply(null, sizes);
       var absNote = ina.length ? ' 오늘 불참 ' + ina.length + '명을 뺀 결과일 수 있습니다 — 수업에 지장이 없으면 그대로 두고, 필요하면 학생을 끌어 옮기세요.' : '';
-      if (sizes.length && mx - mn > 1) warns.push('팀 인원 차이가 ' + (mx - mn) + '명입니다 (최소 ' + mn + ' · 최대 ' + mx + ').' + absNote);
-      if (o.genderBalance) ['남', '여'].forEach(function (g) {
-        var c = stats.teams.map(function (tm) { return g === '남' ? tm.male : tm.female; });
-        var d = Math.max.apply(null, c) - Math.min.apply(null, c);
-        if (c.length && d > 1) warns.push('팀별 ' + g + '학생 수 차이가 ' + d + '명입니다.' + absNote);
-      });
+      if (split) {
+        ev.groups.forEach(function (g) {
+          var gs = g.teams.map(function (t) { return t.length; });
+          var gmn = Math.min.apply(null, gs), gmx = Math.max.apply(null, gs);
+          if (gs.length && gmx - gmn > 1) warns.push(g.label + ' 인원 차이가 ' + (gmx - gmn) + '명입니다 (최소 ' + gmn + ' · 최대 ' + gmx + ').' + absNote);
+          g.teams.forEach(function (t, j) {
+            var wrong = t.filter(function (id) { return byId[id] && (byId[id].gender === '여' ? '여' : '남') !== g.gender; });
+            if (wrong.length) warns.push(teamName(g.idx[j]) + '(' + g.label + ')에 ' + (g.gender === '남' ? '여' : '남') + '학생이 들어 있습니다: ' + wrong.map(nm).join(', '));
+          });
+        });
+      } else {
+        if (sizes.length && mx - mn > 1) warns.push('팀 인원 차이가 ' + (mx - mn) + '명입니다 (최소 ' + mn + ' · 최대 ' + mx + ').' + absNote);
+        if (o.genderBalance) ['남', '여'].forEach(function (g) {
+          var c = stats.teams.map(function (tm) { return g === '남' ? tm.male : tm.female; });
+          var d = Math.max.apply(null, c) - Math.min.apply(null, c);
+          if (c.length && d > 1) warns.push('팀별 ' + g + '학생 수 차이가 ' + d + '명입니다.' + absNote);
+        });
+      }
       var teamOf = {}; teams.forEach(function (t, i) { t.forEach(function (id) { teamOf[id] = i; }); });
       var nm = function (id) { return byId[id] ? label(byId[id]) : id; };
       (o.together || []).forEach(function (pr) { if (teamOf[pr[0]] !== undefined && teamOf[pr[1]] !== undefined && teamOf[pr[0]] !== teamOf[pr[1]]) warns.push('함께 넣기 조건과 다릅니다: ' + nm(pr[0]) + ' + ' + nm(pr[1])); });
@@ -941,7 +988,7 @@
       Object.keys(o.pinned || {}).forEach(function (id) { if (teamOf[id] !== undefined && teamOf[id] !== +o.pinned[id]) warns.push('팀 고정과 다릅니다: ' + nm(id) + ' → ' + teamName(+o.pinned[id]) + '이어야 하는데 ' + teamName(teamOf[id]) + '에 있습니다.'); });
       if (unIds.length) warns.push('미배정 ' + unIds.length + '명이 있습니다. 아래에서 자동 배치하거나 팀 카드로 끌어다 놓으세요.');
       if (warns.length) warns.forEach(function (w) { checks.appendChild(h('div', { class: 'log', text: '⚠ ' + w })); });
-      else checks.appendChild(h('div', { class: 'checks-ok', text: '✔ 검사 통과 — 중복·미배정 없음 · 팀 인원 균형' + (o.genderBalance ? ' · 성별 균형' : '') + ' · 제약 조건 충족' }));
+      else checks.appendChild(h('div', { class: 'checks-ok', text: '✔ 검사 통과 — 중복·미배정 없음 · 팀 인원 균형' + (split ? ' · 남녀 팀 분리' : (o.genderBalance ? ' · 성별 균형' : '')) + ' · 제약 조건 충족' }));
     })();
 
     /* 미배정 (편성 뒤 추가·복귀한 학생) */
@@ -952,11 +999,13 @@
         h('ul', { class: 'members' }, unIds.map(function (id) { return memberEl(byId[id], s, -1); }))));
     }
 
-    /* 팀 카드 (번호순 — 체력 서열이 드러나지 않도록) */
+    /* 팀 카드 (번호순 — 체력 서열이 드러나지 않도록). 남녀 따로면 그룹 제목으로 구분 */
     var noOf = function (id) { var p = byId[id]; return p && p.no !== null && p.no !== undefined ? p.no : 1e9; };
+    var statOf = {}; ev.groups.forEach(function (g) { g.idx.forEach(function (t, j) { statOf[t] = g.stats.teams[j]; }); });
     teams.forEach(function (rawIds, t) {
+      if (split) ev.groups.forEach(function (g) { if (g.idx[0] === t) teamsEl.appendChild(h('h3', { class: 'group-title', text: (g.gender === '남' ? '👦 ' : '👧 ') + g.label + ' · ' + g.size + '명' })); });
       var ids = rawIds.slice().sort(function (a, b) { return noOf(a) - noOf(b); });
-      var tm = stats.teams[t];
+      var tm = statOf[t] || { size: ids.length, male: 0, female: 0, unknown: 0, meanPaps: NaN, meanVirtues: {} };
       var card = h('div', { class: 'team', dataset: { team: t } },
         h('div', { class: 'team-head', style: 'background:' + teamColor(t) },
           h('h3', { text: teamName(t) }), h('span', { class: 'meta', text: tm.size + '명 · 남 ' + tm.male + ' 여 ' + tm.female + (tm.unknown ? ' ?' + tm.unknown : '') })),
@@ -982,30 +1031,35 @@
     });
     if (!s.studentView) $('#dnd-hint').textContent = '학생을 다른 팀 카드로 끌어다 놓으면 이동하고, 학생을 클릭한 뒤 다른 학생을 클릭하면 서로 교환됩니다. 통계는 바로 다시 계산됩니다.';
 
-    /* 균형표 */
+    /* 균형표·차트 (남녀 따로면 성별 그룹마다 따로 — 팀 간 비교는 같은 성별 안에서) */
     bal.className = 'balance';
-    var table = h('table');
-    table.appendChild(h('thead', null, h('tr', null, h('th', { text: '팀' }), h('th', { text: '인원' }), h('th', { text: '남' }), h('th', { text: '여' }), h('th', { text: 'PAPS 평균(점/100)' }), VK.map(function (k) { return h('th', { text: k + '(/5)' }); }))));
-    var tb = h('tbody');
-    stats.teams.forEach(function (tm, t) {
-      tb.appendChild(h('tr', null, h('td', { class: 'tn' }, h('i', { class: 'dot', style: 'background:' + teamColor(t) }), teamName(t)), h('td', { text: tm.size }), h('td', { text: tm.male }), h('td', { text: tm.female }),
-        h('td', { text: fmt(tm.meanPaps, 1) }), VK.map(function (k) { return h('td', { text: fmt(tm.meanVirtues[k], 2) }); })));
-    });
-    tb.appendChild(h('tr', { class: 'foot adv' }, h('td', { class: 'tn', text: '범위(최대−최소)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.range, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].range, 2) }); })));
-    tb.appendChild(h('tr', { class: 'foot adv' }, h('td', { class: 'tn', text: '팀 평균 표준편차' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.sd, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].sd, 2) }); })));
-    tb.appendChild(h('tr', { class: 'foot adv' }, h('td', { class: 'tn', text: '학생 표준편차(참고)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(stats.metrics.PAPS.studentSd, 1) }), VK.map(function (k) { return h('td', { text: fmt(stats.metrics[k].studentSd, 2) }); })));
-    var ratioCell = function (mk) {
-      var m = stats.metrics[mk], r = m.studentSd > 1e-9 ? m.range / m.studentSd : Infinity, v = verdict(r);
-      return h('td', null, h('span', { style: 'color:' + v.color + ';font-weight:700' }, v.text), h('span', { class: 'hint', text: ' ' + (isFinite(r) ? r.toFixed(2) + '배' : '') }));
-    };
-    tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '균등 판정' }), h('td'), h('td'), h('td'), ratioCell('PAPS'), VK.map(ratioCell)));
-    table.appendChild(tb);
-    bal.appendChild(h('h3', { text: '팀 균형표' }));
-    bal.appendChild(table);
+    ev.groups.forEach(function (g) {
+      var gst = g.stats;
+      var table = h('table');
+      table.appendChild(h('thead', null, h('tr', null, h('th', { text: '팀' }), h('th', { text: '인원' }), h('th', { text: '남' }), h('th', { text: '여' }), h('th', { text: 'PAPS 평균(점/100)' }), VK.map(function (k) { return h('th', { text: k + '(/5)' }); }))));
+      var tb = h('tbody');
+      gst.teams.forEach(function (tm, j) {
+        var t = g.idx[j];
+        tb.appendChild(h('tr', null, h('td', { class: 'tn' }, h('i', { class: 'dot', style: 'background:' + teamColor(t) }), teamName(t)), h('td', { text: tm.size }), h('td', { text: tm.male }), h('td', { text: tm.female }),
+          h('td', { text: fmt(tm.meanPaps, 1) }), VK.map(function (k) { return h('td', { text: fmt(tm.meanVirtues[k], 2) }); })));
+      });
+      tb.appendChild(h('tr', { class: 'foot adv' }, h('td', { class: 'tn', text: '범위(최대−최소)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(gst.metrics.PAPS.range, 1) }), VK.map(function (k) { return h('td', { text: fmt(gst.metrics[k].range, 2) }); })));
+      tb.appendChild(h('tr', { class: 'foot adv' }, h('td', { class: 'tn', text: '팀 평균 표준편차' }), h('td'), h('td'), h('td'), h('td', { text: fmt(gst.metrics.PAPS.sd, 1) }), VK.map(function (k) { return h('td', { text: fmt(gst.metrics[k].sd, 2) }); })));
+      tb.appendChild(h('tr', { class: 'foot adv' }, h('td', { class: 'tn', text: '학생 표준편차(참고)' }), h('td'), h('td'), h('td'), h('td', { text: fmt(gst.metrics.PAPS.studentSd, 1) }), VK.map(function (k) { return h('td', { text: fmt(gst.metrics[k].studentSd, 2) }); })));
+      var ratioCell = function (mk) {
+        var m = gst.metrics[mk], r = m.studentSd > 1e-9 ? m.range / m.studentSd : Infinity, v = verdict(r);
+        return h('td', null, h('span', { style: 'color:' + v.color + ';font-weight:700' }, v.text), h('span', { class: 'hint', text: ' ' + (isFinite(r) ? r.toFixed(2) + '배' : '') }));
+      };
+      tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '균등 판정' }), h('td'), h('td'), h('td'), ratioCell('PAPS'), VK.map(ratioCell)));
+      table.appendChild(tb);
+      bal.appendChild(h('h3', { text: (split ? g.label + ' ' : '팀 ') + '균형표' + (split ? ' (' + g.label.replace(' 팀', '') + '학생 ' + g.students.length + '명 기준)' : '') }));
+      bal.appendChild(table);
 
-    /* 차트 */
-    charts.appendChild(dotPlot(stats, prep, o.papsTolerance));
-    charts.appendChild(radar(stats, prep));
+      /* 차트 */
+      if (split) charts.appendChild(h('h3', { class: 'group-title', text: g.label + ' 차트' }));
+      charts.appendChild(dotPlot(gst, g.students, o.papsTolerance, g.idx));
+      charts.appendChild(radar(gst, g.students, g.idx));
+    });
   }
 
   function memberEl(p, s, team) {
@@ -1052,7 +1106,9 @@
   }
 
   /* ---------- 차트: 지표별 팀 평균 분포 (학생 분포 축 고정) ---------- */
-  function dotPlot(stats, prep, tau) {
+  /* idx: 그룹 안 팀 순번 → 전체 팀 번호 (남녀 따로일 때 색·이름용) */
+  function dotPlot(stats, prep, tau, idx) {
+    var gi = function (t) { return idx ? idx[t] : t; };
     var metrics = ['PAPS'].concat(VK);
     var W = 700, rowH = 60, labelW = 72, right = 160, top = 14;
     var H = top + metrics.length * rowH + 8;
@@ -1095,8 +1151,8 @@
       root_.appendChild(svg('line', { x1: rx1, x2: rx1, y1: ry - 3, y2: ry + 3, stroke: '#b7791f' }));
       /* 팀 평균 */
       tm.forEach(function (v, t) {
-        var c = svg('circle', { cx: xOf(v), cy: y, r: 6.5, fill: teamColor(t), stroke: '#fff', 'stroke-width': 1.5 });
-        c.appendChild(svg('title', null, teamName(t) + ' ' + mk + ' 평균 ' + v.toFixed(dec) + ' (학급 평균과의 차이 ' + (v - mean >= 0 ? '+' : '') + (v - mean).toFixed(dec) + ')'));
+        var c = svg('circle', { cx: xOf(v), cy: y, r: 6.5, fill: teamColor(gi(t)), stroke: '#fff', 'stroke-width': 1.5 });
+        c.appendChild(svg('title', null, teamName(gi(t)) + ' ' + mk + ' 평균 ' + v.toFixed(dec) + ' (학급 평균과의 차이 ' + (v - mean >= 0 ? '+' : '') + (v - mean).toFixed(dec) + ')'));
         root_.appendChild(c);
       });
       /* 오른쪽: 수치 + 판정 */
@@ -1107,7 +1163,7 @@
       root_.appendChild(svg('text', { x: W - 6 - pw / 2, y: y + 15, 'font-size': 10.5, 'font-weight': 700, fill: vd.color, 'text-anchor': 'middle' }, vd.text));
     });
     var box = h('div', { class: 'chart' }, h('h4', { text: '지표별 팀 평균 분포 (팀 점이 초록 띠 안에 모일수록 균등)' }), root_,
-      h('div', { class: 'legend' }, stats.teams.map(function (_, t) { return h('span', null, h('i', { style: 'background:' + teamColor(t) }), teamName(t)); })),
+      h('div', { class: 'legend' }, stats.teams.map(function (_, t) { return h('span', null, h('i', { style: 'background:' + teamColor(gi(t)) }), teamName(gi(t))); })),
       h('div', { class: 'legend' },
         h('span', null, h('i', { style: 'background:#64748b;opacity:.5' }), '학생 개개인'),
         h('span', null, h('i', { style: 'background:#1e8e5a;opacity:.35;border-radius:3px' }), '균등 기준 띠 = 학급 평균 ± 학생 편차 0.25배 (PAPS는 허용편차)'),
@@ -1117,7 +1173,8 @@
   }
 
   /* ---------- 차트: 4덕목 레이더 (학급 평균 중심, 학생 표준편차 단위 고정 축) ---------- */
-  function radar(stats, prep) {
+  function radar(stats, prep, idx) {
+    var gi = function (t) { return idx ? idx[t] : t; };
     var size = 320, cx = size / 2, cy = size / 2 + 6, R = 112, ZMAX = 1.5;
     var means = {}, sds = {};
     VK.forEach(function (k) { var v = metricValues(prep, k); means[k] = v.reduce(function (a, b) { return a + b; }, 0) / (v.length || 1); sds[k] = stats.metrics[k].studentSd || 1e-9; });
@@ -1142,8 +1199,8 @@
     });
     stats.teams.forEach(function (tm, t) {
       var pts = VK.map(function (k, i) { return ptZ(i, zOf(k, tm.meanVirtues[k])).join(','); }).join(' ');
-      var poly = svg('polygon', { points: pts, fill: teamColor(t), 'fill-opacity': 0.06, stroke: teamColor(t), 'stroke-width': 2 });
-      poly.appendChild(svg('title', null, teamName(t) + ' ' + VK.map(function (k) { return k + ' ' + tm.meanVirtues[k].toFixed(2) + ' (' + (zOf(k, tm.meanVirtues[k]) >= 0 ? '+' : '') + zOf(k, tm.meanVirtues[k]).toFixed(2) + ' SD)'; }).join(', ')));
+      var poly = svg('polygon', { points: pts, fill: teamColor(gi(t)), 'fill-opacity': 0.06, stroke: teamColor(gi(t)), 'stroke-width': 2 });
+      poly.appendChild(svg('title', null, teamName(gi(t)) + ' ' + VK.map(function (k) { return k + ' ' + tm.meanVirtues[k].toFixed(2) + ' (' + (zOf(k, tm.meanVirtues[k]) >= 0 ? '+' : '') + zOf(k, tm.meanVirtues[k]).toFixed(2) + ' SD)'; }).join(', ')));
       root_.appendChild(poly);
     });
     return h('div', { class: 'chart' }, h('h4', { text: '4덕목 팀 평균 레이더 (초록 점선 = 학급 평균, 띠 안이면 균등)' }), root_,
@@ -1159,7 +1216,8 @@
       var teams = sanitizeTeams(s);
       if (!teams) { toast('먼저 팀을 편성하세요.', true); return; }
       var prep = prepare(s);
-      try { var f = X.exportTeamsXlsx(s, prep, teams, A.evaluateTeams(prep, teams), { includeScores: includeScores, teamNames: s.teamNames }); toast(f + ' 저장'); }
+      var ev = A.evaluateGroups(prep, teams, s.result.split || null);
+      try { var f = X.exportTeamsXlsx(s, prep, teams, ev.groups[0].stats, { includeScores: includeScores, teamNames: s.teamNames, groups: ev.groups, split: s.result.split || null, equity: ev.equity }); toast(f + ' 저장'); }
       catch (e) { toast(e.message, true); }
     }
     $('#btn-xlsx').addEventListener('click', function () { doXlsx(false); });

@@ -62,7 +62,10 @@ button, input { font: inherit; }
 .adv-details { margin: 0 0 1.1rem; border: 1px dashed var(--line); border-radius: 12px; padding: .5rem .9rem; }
 .adv-details summary { cursor: pointer; color: var(--muted); font-size: .95rem; font-weight: 600; }
 .adv-details[open] summary { margin-bottom: .6rem; }
+.split-counts { display: inline-flex; gap: .8rem; align-items: center; padding-left: .6rem; border-left: 1px solid var(--line); }
 .names { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .5rem; margin-bottom: .4rem; }
+.names .group-title, .boards .group-title { grid-column: 1 / -1; font-weight: 800; font-size: .95rem; color: var(--muted); margin-top: .3rem; letter-spacing: .02em; }
+.boards .group-title { margin-top: .6rem; padding-bottom: .1rem; border-bottom: 1px dashed var(--line); }
 .names label { display: flex; align-items: center; gap: .4rem; font-size: .85rem; color: var(--muted); }
 .names i { width: .9em; height: .9em; border-radius: 50%; display: inline-block; flex: none; }
 .names input { flex: 1; min-width: 0; padding: .35rem .5rem; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); }

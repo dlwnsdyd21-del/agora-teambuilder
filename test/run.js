@@ -224,6 +224,36 @@ test('buildTeams: 소규모·극단 (N<2K, K=1, N=0)', () => {
   const r0 = A.buildTeams([], { teamCount: 3 });
   assert.strictEqual(r0.stats, null);
 });
+test('buildTeams 남녀 따로: 남자 팀·여자 팀 분리, 그룹 안 균형, 성별 어긋난 고정·함께 무시', () => {
+  const prep = S.prepareStudents(makeStudents(33, 11), { schoolLevel: '중', defaultGrade: 1 });
+  const g = id => prep.find(p => p.id === id).gender;
+  // S1·S3·S5·S7 남, S2·S4·S6 여. S2를 남자 팀(1)에 고정 → 무시, S5+S2 함께 넣기 → 성별 달라 무시, S2↔S4 떨어뜨리기 → 적용
+  const res = A.buildTeams(prep, { genderSeparate: true, teamCountM: 3, teamCountF: 2, seed: 2, pinned: { S1: 0, S2: 1, S3: 2, S6: 4 }, together: [['S5', 'S2'], ['S5', 'S7']], apart: [['S2', 'S4']] });
+  assert.strictEqual(res.teams.length, 5);
+  assert.deepStrictEqual(res.meta.separate, { 남: 3, 여: 2 });
+  res.teams.forEach((t, i) => assert.ok(t.every(id => g(id) === (i < 3 ? '남' : '여')), '팀 ' + i + ' 단일 성별'));
+  const boys = res.teams.slice(0, 3).map(t => t.length), girls = res.teams.slice(3).map(t => t.length);
+  assert.ok(Math.max(...boys) - Math.min(...boys) <= 1 && Math.max(...girls) - Math.min(...girls) <= 1);
+  assert.strictEqual(boys.reduce((a, b) => a + b, 0), 17); assert.strictEqual(girls.reduce((a, b) => a + b, 0), 16);
+  assert.ok(res.teams[0].includes('S1') && res.teams[2].includes('S3'), '남자 팀 고정'); assert.ok(res.teams[4].includes('S6'), '여 2팀 고정');
+  assert.ok(res.teams[3].includes('S2') || res.teams[4].includes('S2'), '남자 팀에 고정된 여학생은 여자 팀으로');
+  assert.ok(res.log.some(m => m.includes('성별과 맞지 않아')) && res.log.some(m => m.includes('성별이 달라')), '성별 어긋난 제약은 로그: ' + res.log.join(' | '));
+  const tS5 = res.teams.findIndex(t => t.includes('S5')), tS7 = res.teams.findIndex(t => t.includes('S7'));
+  assert.strictEqual(tS5, tS7, '같은 성별 함께 넣기 적용');
+  assert.notStrictEqual(res.teams.findIndex(t => t.includes('S2')), res.teams.findIndex(t => t.includes('S4')), '같은 성별 떨어뜨리기 적용');
+  assert.ok(res.groups.length === 2 && res.groups[0].label === '남자 팀' && res.groups[0].stats.Dp <= 3.5, 'Dp ' + res.groups[0].stats.Dp);
+  assert.ok(res.equity >= 0 && res.equity <= 100);
+  const ev = A.evaluateGroups(prep, res.teams, { 남: 3, 여: 2 });
+  assert.deepStrictEqual(ev.groups.map(x => x.idx), [[0, 1, 2], [3, 4]]);
+  assert.strictEqual(ev.groups[0].students.length, 17);
+  assert.deepStrictEqual([0, 2, 3, 4].map(t => A.teamLabel(t, { 남: 3, 여: 2 })), ['남 1팀', '남 3팀', '여 1팀', '여 2팀']);
+  assert.strictEqual(A.teamLabel(2, null), '3팀');
+  // 성별 미상 → 인원 많은 쪽, 로그
+  const prep2 = prep.map((p, i) => i === 0 ? Object.assign({}, p, { gender: null }) : p);
+  const r2 = A.buildTeams(prep2, { genderSeparate: true, teamCountM: 3, teamCountF: 3, seed: 1 });
+  assert.ok(r2.log.some(m => m.includes('성별 미상')));
+  assert.strictEqual(r2.teams.flat().length, 33);
+});
 test('evaluateTeams: 수동 조정 후 통계 재계산', () => {
   const r = A.buildTeams(base, { teamCount: 6, seed: 1 });
   const teams = r.teams.map(t => t.slice());
@@ -575,6 +605,41 @@ test('팀 고정: pick·credit 모드에서 미리 배치, 지명 대상 제외,
     assert.deepStrictEqual(st.teams[0].slice().sort(), ['S1', 'S2']);
     if (mode === 'credit') assert.strictEqual(st.spent[0], st.costs.S1 + st.costs.S2);
   }
+});
+
+test('남녀 따로 드래프트: pick·credit 모두 같은 성별 팀만 지명, 인원·예산 그룹 안에서, 자동 완주', () => {
+  const prep = S.prepareStudents(makeStudents(33, 21), { schoolLevel: '중', defaultGrade: 1 });
+  const g = id => prep.find(p => p.id === id).gender;
+  for (const mode of ['pick', 'credit']) {
+    const st = D.initDraft(prep, { mode, split: { 남: 3, 여: 3 }, seed: 4, pinned: { S1: 0, S2: 1, S4: 5 } });
+    assert.strictEqual(st.K, 6); assert.deepStrictEqual(st.teamGender, ['남', '남', '남', '여', '여', '여']);
+    assert.ok(st.teams[0].includes('S1') && st.teams[5].includes('S4'), '성별 맞는 고정만');
+    assert.ok(!st.teams[1].includes('S2'), '여학생을 남자 팀에 고정하면 무시');
+    if (mode === 'pick') st.sequence.forEach(sq => assert.strictEqual(st.poolGender[sq.pool], st.teamGender[sq.team], '풀 성별 = 팀 성별'));
+    if (mode === 'credit') {
+      const boys = prep.filter(p => p.gender === '남').reduce((a, p) => a + st.costs[p.id], 0);
+      assert.strictEqual(st.budgets.slice(0, 3).reduce((a, b) => a + b, 0), boys, '남자 팀 예산 합 = 남학생 크레딧 합');
+    }
+    let bad = 0;
+    while (!D.isDone(st)) {
+      const cur = D.currentPick(st), c = D.candidates(st, prep);
+      if (!c.ids.every(id => g(id) === st.teamGender[cur.team])) bad++;
+      D.pick(st, D.autoPick(st, prep), prep);
+    }
+    assert.strictEqual(bad, 0, '후보는 항상 같은 성별');
+    st.teams.forEach((t, i) => assert.ok(t.every(id => g(id) === st.teamGender[i])));
+    assert.strictEqual(st.teams.flat().length, 33);
+    const sizes = st.teams.map(t => t.length);
+    assert.ok(Math.max(...sizes.slice(0, 3)) - Math.min(...sizes.slice(0, 3)) <= 1 && Math.max(...sizes.slice(3)) - Math.min(...sizes.slice(3)) <= 1);
+    if (mode === 'credit') { const sm = D.summary(st); assert.strictEqual(sm.unused + sm.over, 0, '예산 정확히 소진'); }
+  }
+  // fillRemaining 도 성별을 지킴
+  const st2 = D.initDraft(prep, { mode: 'credit', split: { 남: 2, 여: 2 }, seed: 9 });
+  D.fillRemaining(st2, prep);
+  st2.teams.forEach((t, i) => assert.ok(t.every(id => g(id) === st2.teamGender[i])));
+  // 성별 미상이 있으면 시작 불가
+  const prep3 = prep.map((p, i) => i === 5 ? Object.assign({}, p, { gender: null }) : p);
+  assert.throws(() => D.initDraft(prep3, { mode: 'pick', split: { 남: 3, 여: 3 } }), /성별 미상/);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

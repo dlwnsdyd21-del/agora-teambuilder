@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1f6feb">
   <title>PAPS + 인성 AI 팀빌딩</title>
   <link rel="icon" type="image/png" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="css/style.css?v=9">
+  <link rel="stylesheet" href="css/style.css?v=10">
 </head>
 <body>
   <header class="topbar">
@@ -120,11 +120,17 @@
     <section id="sec-settings" class="card teacher-only">
       <h2>3. 편성 설정 · 방식</h2>
       <div class="settings-grid">
-        <label>팀 수
+        <label id="teamCount-wrap">팀 수
           <input type="number" id="opt-teamCount" min="1" max="20" step="1">
           <span class="hint" id="team-size-hint"></span>
         </label>
-        <label class="check"><input type="checkbox" id="opt-genderBalance"> 성별 균형 <span class="hint">각 팀 남·여 수 차이 1명 이하</span></label>
+        <label class="check" id="genderBalance-wrap"><input type="checkbox" id="opt-genderBalance"> 성별 균형 <span class="hint">각 팀 남·여 수 차이 1명 이하</span></label>
+        <label class="check" title="남학생은 남자 팀, 여학생은 여자 팀으로 따로 편성합니다 (남녀 합반에서 남·여 리그를 따로 운영할 때)"><input type="checkbox" id="opt-genderSeparate"> 남녀 따로 편성 <span class="hint">남자 팀 · 여자 팀을 각각 구성</span></label>
+        <span id="split-counts" class="split-counts" hidden>
+          <label>남자 팀 수 <input type="number" id="opt-teamCountM" min="1" max="12" step="1"></label>
+          <label>여자 팀 수 <input type="number" id="opt-teamCountF" min="1" max="12" step="1"></label>
+          <span class="hint" id="split-hint"></span>
+        </span>
         <label class="adv">PAPS 허용편차
           <input type="range" id="opt-papsTolerance" min="1" max="15" step="0.5">
           <span class="hint"><b id="tau-value"></b>점 (100점 만점) · 팀 평균 PAPS 점수의 최대-최소 범위를 이 안에 유지하고, 그 안에서 인성 편차를 최소화. 기본 3점. 1점 이하로 줄이면 팀 수가 많을 때 못 지킬 수 있습니다</span>
@@ -236,11 +242,11 @@
   <script src="js/questions.js?v=3"></script>
   <script src="js/paps_table.js?v=3"></script>
   <script src="js/scoring.js?v=3"></script>
-  <script src="js/algorithm.js?v=4"></script>
+  <script src="js/algorithm.js?v=6"></script>
   <script src="js/parse.js?v=5"></script>
   <script src="js/state.js?v=7"></script>
-  <script src="js/export.js?v=6"></script>
-  <script src="js/ui.js?v=14"></script>
+  <script src="js/export.js?v=7"></script>
+  <script src="js/ui.js?v=15"></script>
   <script src="js/app.js?v=3"></script>
 </body>
 </html>

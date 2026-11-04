@@ -66,6 +66,7 @@
   function makeBudgets(costs, ids, slots) {
     var total = 0; ids.forEach(function (id) { total += costs[id] || 0; });
     var N = ids.length, K = slots.length, budgets = [], acc = 0;
+    if (!N) return slots.map(function () { return 0; });
     for (var t = 0; t < K; t++) { budgets.push(Math.floor(total * slots[t] / N)); acc += budgets[t]; }
     var rem = total - acc, t2 = 0;
     while (rem > 0) { budgets[t2 % K]++; rem--; t2++; }
@@ -79,26 +80,38 @@
    * 'pick' 모드 풀: 성별 그룹별로 PAPS 내림차순 → 2K명씩 '체력 구간' → 구간 안에서 인성 평균 순으로
    * K명씩 묶음(풀). 한 풀 안은 체력·인성 수준이 비슷하고 강점 덕목만 다르게 됨. 그룹은 번갈아 배치.
    */
+  function chunkGroup(list, K, rng) {
+    list = list.slice();
+    var jitter = {}; list.forEach(function (p) { jitter[p.id] = rng(); });
+    list.sort(function (a, b) { return (b.papsPoints - a.papsPoints) || (jitter[a.id] - jitter[b.id]); });
+    var chunks = [];
+    for (var i = 0; i < list.length; i += 2 * K) {
+      var band = list.slice(i, i + 2 * K);
+      band.sort(function (a, b) { return (virtueMean(b) - virtueMean(a)) || (jitter[a.id] - jitter[b.id]); });
+      for (var j = 0; j < band.length; j += K) chunks.push(band.slice(j, j + K).map(function (p) { return p.id; }));
+    }
+    return chunks;
+  }
   function buildPools(prepared, K, genderBalance, rng) {
     var groups = {};
     prepared.forEach(function (p) { var g = genderBalance ? gKey(p.gender) : 'all'; (groups[g] = groups[g] || []).push(p); });
-    var chunksByGroup = Object.keys(groups).map(function (g) {
-      var list = groups[g].slice();
-      var jitter = {}; list.forEach(function (p) { jitter[p.id] = rng(); });
-      list.sort(function (a, b) { return (b.papsPoints - a.papsPoints) || (jitter[a.id] - jitter[b.id]); });
-      var chunks = [];
-      for (var i = 0; i < list.length; i += 2 * K) {
-        var band = list.slice(i, i + 2 * K);
-        band.sort(function (a, b) { return (virtueMean(b) - virtueMean(a)) || (jitter[a.id] - jitter[b.id]); });
-        for (var j = 0; j < band.length; j += K) chunks.push(band.slice(j, j + K).map(function (p) { return p.id; }));
-      }
-      return chunks;
-    });
+    var chunksByGroup = Object.keys(groups).map(function (g) { return chunkGroup(groups[g], K, rng); });
     chunksByGroup.sort(function (a, b) { return b.length - a.length; });
     var pools = [], maxLen = 0;
     chunksByGroup.forEach(function (c) { if (c.length > maxLen) maxLen = c.length; });
     for (var i = 0; i < maxLen; i++) chunksByGroup.forEach(function (c) { if (c[i]) pools.push(c[i]); });
     return pools;
+  }
+  /* 남녀 따로: 성별마다 그 성별 팀 수(split[g])만큼 묶은 풀. 반환 {pools, genders} (풀마다 성별) */
+  function buildPoolsSplit(prepared, split, rng) {
+    var groups = { 남: [], 여: [] };
+    prepared.forEach(function (p) { groups[gKey(p.gender) === '여' ? '여' : '남'].push(p); });
+    var byG = ['남', '여'].map(function (g) { return { g: g, chunks: split[g] > 0 && groups[g].length ? chunkGroup(groups[g], split[g], rng) : [] }; });
+    byG.sort(function (a, b) { return b.chunks.length - a.chunks.length; });
+    var pools = [], genders = [], maxLen = 0;
+    byG.forEach(function (c) { if (c.chunks.length > maxLen) maxLen = c.chunks.length; });
+    for (var i = 0; i < maxLen; i++) byG.forEach(function (c) { if (c.chunks[i]) { pools.push(c.chunks[i]); genders.push(c.g); } });
+    return { pools: pools, genders: genders };
   }
 
   /* ---------- 초기화 ---------- */
@@ -107,27 +120,40 @@
    */
   function initDraft(prepared, options) {
     options = options || {};
-    var K = Math.max(1, options.teamCount | 0), N = prepared.length;
+    /* 남녀 따로: split = {남: Km, 여: Kf} → 팀 0..Km-1 남자 팀, 이후 여자 팀 */
+    var split = options.split && ((options.split['남'] | 0) + (options.split['여'] | 0)) > 0 ? { 남: Math.max(0, options.split['남'] | 0), 여: Math.max(0, options.split['여'] | 0) } : null;
+    var K = split ? split['남'] + split['여'] : Math.max(1, options.teamCount | 0), N = prepared.length;
     var rng = A.mulberry32(((options.seed | 0) || 1) * 48271 + 7);
     var order = shuffle(Array.from({ length: K }, function (_, i) { return i; }), rng);
-    var slots = teamSlots(N, K);
     var counts = { 남: 0, 여: 0, 미상: 0 };
     prepared.forEach(function (p) { counts[gKey(p.gender)]++; });
-    /* 성별 균형: 팀별 성별 정원(합계 = 성별 인원, 팀 간 차 ≤1) — 알고리즘 모듈과 같은 규칙 */
-    var gq = null;
-    if (options.genderBalance && (counts['남'] + counts['여']) > 0) gq = A._internal.genderQuotas(slots, counts, A.mulberry32(((options.seed | 0) || 1) * 31 + 3));
+    var slots, gq = null, teamGender = null, orderG = null;
+    if (split) {
+      if (counts['미상'] > 0) throw new Error('성별 미상 학생 ' + counts['미상'] + '명이 있어 남녀 따로 편성할 수 없습니다. 명단에서 성별을 채워 주세요.');
+      teamGender = Array.from({ length: K }, function (_, t) { return t < split['남'] ? '남' : '여'; });
+      slots = (split['남'] ? teamSlots(counts['남'], split['남']) : []).concat(split['여'] ? teamSlots(counts['여'], split['여']) : []);
+      /* 성별 정원 = 그 성별 팀의 전체 자리 (다른 성별은 0) */
+      gq = { 남: slots.map(function (s, t) { return teamGender[t] === '남' ? s : 0; }), 여: slots.map(function (s, t) { return teamGender[t] === '여' ? s : 0; }), 미상: slots.map(function () { return 0; }) };
+      orderG = { 남: order.filter(function (t) { return teamGender[t] === '남'; }), 여: order.filter(function (t) { return teamGender[t] === '여'; }) };
+    } else {
+      slots = teamSlots(N, K);
+      /* 성별 균형: 팀별 성별 정원(합계 = 성별 인원, 팀 간 차 ≤1) — 알고리즘 모듈과 같은 규칙 */
+      if (options.genderBalance && (counts['남'] + counts['여']) > 0) gq = A._internal.genderQuotas(slots, counts, A.mulberry32(((options.seed | 0) || 1) * 31 + 3));
+    }
     var state = {
-      mode: options.mode || 'pick', K: K, N: N, slots: slots, order: order, genderBalance: !!options.genderBalance, gq: gq,
+      mode: options.mode || 'pick', K: K, N: N, slots: slots, order: order, genderBalance: !!options.genderBalance && !split, gq: gq,
+      split: split, teamGender: teamGender, orderG: orderG,
       teamNames: (options.teamNames || []).slice(0, K), picks: [], teams: Array.from({ length: K }, function () { return []; }),
       sequence: [], cursor: 0, status: 'running', seed: options.seed || 1, createdAt: new Date().toISOString(),
       pinned: {}, prePlaced: []
     };
-    while (state.teamNames.length < K) state.teamNames.push((state.teamNames.length + 1) + '팀');
-    /* 팀 고정: 미리 배치 (교사 편성은 알고리즘이 처리하므로 제외) */
-    var idSet = {}; prepared.forEach(function (p) { idSet[p.id] = true; });
+    while (state.teamNames.length < K) state.teamNames.push(A.teamLabel(state.teamNames.length, split));
+    /* 팀 고정: 미리 배치 (교사 편성은 알고리즘이 처리하므로 제외). 남녀 따로면 성별이 맞는 팀에만 */
+    var idSet = {}; prepared.forEach(function (p) { idSet[p.id] = p; });
     if (state.mode !== 'auto') Object.keys(options.pinned || {}).forEach(function (id) {
       var t = parseInt(options.pinned[id], 10);
       if (!idSet[id] || isNaN(t) || t < 0 || t >= K) return;
+      if (split && gKey(idSet[id].gender) !== teamGender[t]) return;
       state.pinned[id] = t; state.prePlaced.push(id); state.teams[t].push(id);
     });
     var pinnedCount = Array.from({ length: K }, function (_, t) { return state.teams[t].length; });
@@ -141,33 +167,52 @@
     }
 
     if (state.mode === 'pick') {
-      state.pools = buildPools(unpinned, K, state.genderBalance, rng);
+      if (split) { var bp = buildPoolsSplit(unpinned, split, rng); state.pools = bp.pools; state.poolGender = bp.genders; }
+      else state.pools = buildPools(unpinned, K, state.genderBalance, rng);
       state.sequence = [];
       /* 팀별 지명 횟수 = 정원 − 미리 배치된 인원. 풀마다 (팀 인원이 적은 팀 → 뱀 순서) 로 지명 */
       var need = slots.map(function (s, t) { return Math.max(0, s - pinnedCount[t]); });
       var totalNeed = need.reduce(function (a, b) { return a + b; }, 0);
-      while (totalNeed < unpinned.length) { var tt = need.indexOf(Math.min.apply(null, need)); need[tt]++; totalNeed++; } // 고정이 많아 정원이 모자랄 때
-      var cnt = pinnedCount.slice(), available = 0;
+      if (!split) { while (totalNeed < unpinned.length) { var tt = need.indexOf(Math.min.apply(null, need)); need[tt]++; totalNeed++; } } // 고정이 많아 정원이 모자랄 때
+      else ['남', '여'].forEach(function (g) {   // 성별마다 따로
+        var n = unpinned.filter(function (p) { return gKey(p.gender) === g; }).length;
+        var tn = need.reduce(function (a, b, t) { return a + (teamGender[t] === g ? b : 0); }, 0);
+        while (tn < n) { var tt2 = -1; for (var u = 0; u < K; u++) if (teamGender[u] === g && (tt2 < 0 || need[u] < need[tt2])) tt2 = u; if (tt2 < 0) break; need[tt2]++; tn++; }
+      });
+      var cnt = pinnedCount.slice(), avail = { all: 0, 남: 0, 여: 0 }, roundG = { 남: 0, 여: 0 };
       state.pools.forEach(function (pool, p) {
-        available += pool.length;
-        var ord = serpentine(order, p).filter(function (t) { return need[t] > 0; });
+        var g = split ? state.poolGender[p] : 'all';
+        avail[g] += pool.length;
+        var ord = serpentine(split ? orderG[g] : order, split ? roundG[g]++ : p).filter(function (t) { return need[t] > 0; });
         var rank = {}; ord.forEach(function (t, i) { rank[t] = i; });
         ord = ord.slice().sort(function (a, b) { return (cnt[a] - cnt[b]) || (rank[a] - rank[b]); });
-        ord.slice(0, Math.min(available, ord.length)).forEach(function (t) { state.sequence.push({ team: t, round: p, pool: p }); cnt[t]++; need[t]--; available--; });
+        ord.slice(0, Math.min(avail[g], ord.length)).forEach(function (t) { state.sequence.push({ team: t, round: p, pool: p }); cnt[t]++; need[t]--; avail[g]--; });
       });
-      /* 남은 학생(풀보다 지명 가능한 팀이 적었던 경우)은 마지막 풀에서 이어서 지명 */
-      var lastPool = state.pools.length - 1;
-      while (available > 0) {
-        var t2 = -1; for (var u = 0; u < K; u++) if (need[u] > 0 && (t2 < 0 || cnt[u] < cnt[t2])) t2 = u;
-        if (t2 < 0) break;
-        state.sequence.push({ team: t2, round: lastPool, pool: lastPool }); cnt[t2]++; need[t2]--; available--;
-      }
+      /* 남은 학생(풀보다 지명 가능한 팀이 적었던 경우)은 그 성별의 마지막 풀에서 이어서 지명 */
+      (split ? ['남', '여'] : ['all']).forEach(function (g) {
+        var lastPool = -1;
+        state.pools.forEach(function (_, p) { if (!split || state.poolGender[p] === g) lastPool = p; });
+        while (avail[g] > 0 && lastPool >= 0) {
+          var t2 = -1; for (var u = 0; u < K; u++) if (need[u] > 0 && (!split || teamGender[u] === g) && (t2 < 0 || cnt[u] < cnt[t2])) t2 = u;
+          if (t2 < 0) break;
+          state.sequence.push({ team: t2, round: lastPool, pool: lastPool }); cnt[t2]++; need[t2]--; avail[g]--;
+        }
+      });
       /* 풀 기반이므로 팀 인원은 시퀀스 + 고정으로 결정 */
       state.slots = pinnedCount.slice();
       state.sequence.forEach(function (sq) { state.slots[sq.team]++; });
+      if (split) state.gq = { 남: state.slots.map(function (s, t) { return teamGender[t] === '남' ? s : 0; }), 여: state.slots.map(function (s, t) { return teamGender[t] === '여' ? s : 0; }), 미상: state.slots.map(function () { return 0; }) };
     } else if (state.mode === 'credit') {
-      state.costs = computeCosts(prepared, { fitnessWeight: options.fitnessWeight });
-      state.budgets = makeBudgets(state.costs, prepared.map(function (p) { return p.id; }), slots);
+      if (split) {
+        /* 크레딧은 같은 성별 안의 백분위로, 예산도 성별 그룹 안에서 나눔 */
+        var boys = prepared.filter(function (p) { return gKey(p.gender) === '남'; }), girls = prepared.filter(function (p) { return gKey(p.gender) === '여'; });
+        state.costs = Object.assign({}, computeCosts(boys, { fitnessWeight: options.fitnessWeight }), computeCosts(girls, { fitnessWeight: options.fitnessWeight }));
+        state.budgets = makeBudgets(state.costs, boys.map(function (p) { return p.id; }), slots.slice(0, split['남']))
+          .concat(makeBudgets(state.costs, girls.map(function (p) { return p.id; }), slots.slice(split['남'])));
+      } else {
+        state.costs = computeCosts(prepared, { fitnessWeight: options.fitnessWeight });
+        state.budgets = makeBudgets(state.costs, prepared.map(function (p) { return p.id; }), slots);
+      }
       state.spent = Array.from({ length: K }, function () { return 0; });
       state.prePlaced.forEach(function (id) { state.spent[state.pinned[id]] += state.costs[id]; });
       var needC = slots.map(function (s, t) { return Math.max(0, s - pinnedCount[t]); });
@@ -254,11 +299,12 @@
    * 종반(남은 선수 ≤ limitN): 남은 선수 전원을 모든 팀의 남은 자리에 배정하면서
    * 모든 팀이 예산을 정확히 쓰고 성별 정원도 맞출 수 있는지 되추적으로 확인
    */
-  function globalExactFeasible(state, byId, poolIds, nodeLimit) {
+  function globalExactFeasible(state, byId, poolIds, nodeLimit, gender) {
     var teams = [];
     for (var t = 0; t < state.K; t++) {
       var rs = remainingSlots(state, t);
       if (rs <= 0) continue;
+      if (state.split && gender && state.teamGender[t] !== gender) continue;   // 남녀 따로: 같은 성별 팀끼리만
       var need = null;
       if (state.gq) {
         need = {};
@@ -311,6 +357,8 @@
     var base = state.mode === 'pick'
       ? [].concat.apply([], state.pools.slice(0, cur.pool + 1)).filter(function (id) { return !picked[id]; })
       : prepared.map(function (p) { return p.id; }).filter(function (id) { return !picked[id]; });
+    /* 남녀 따로: 이 팀의 성별만 */
+    if (state.split) base = base.filter(function (id) { return byId[id] && gKey(byId[id].gender) === state.teamGender[cur.team]; });
     /* 1) 성별 정원 */
     var genderOk = base.filter(function (id) {
       var p = byId[id]; if (!p) return false;
@@ -339,7 +387,7 @@
       var globalOk = exactOk.filter(function (id) {
         var cost = state.costs[id];
         state.teams[cur.team].push(id); state.spent[cur.team] += cost;
-        var ok = globalExactFeasible(state, byId, base.filter(function (x) { return x !== id; }));
+        var ok = globalExactFeasible(state, byId, base.filter(function (x) { return x !== id; }), null, state.split ? state.teamGender[cur.team] : null);
         state.teams[cur.team].pop(); state.spent[cur.team] -= cost;
         if (!ok) reasons[id] = '이 선수를 고르면 다른 팀이 예산을 정확히 쓸 수 없습니다';
         return ok;
@@ -384,10 +432,13 @@
     var c = candidates(state, prepared);
     if (!c.ids.length) return null;
     var byId = {}; prepared.forEach(function (p) { byId[p.id] = p; });
-    var cm = { paps: mean(prepared.map(function (p) { return p.papsPoints; })) };
-    VK.forEach(function (k) { cm[k] = mean(prepared.map(function (p) { return p.virtues[k]; })); });
-    var sdP = sd(prepared.map(function (p) { return p.papsPoints; })) || 1;
-    var sdV = {}; VK.forEach(function (k) { sdV[k] = sd(prepared.map(function (p) { return p.virtues[k]; })) || 1; });
+    /* 기준 집단: 남녀 따로면 이 팀 성별의 학생들 */
+    var ref = state.split ? prepared.filter(function (p) { return gKey(p.gender) === state.teamGender[cur.team]; }) : prepared;
+    if (!ref.length) ref = prepared;
+    var cm = { paps: mean(ref.map(function (p) { return p.papsPoints; })) };
+    VK.forEach(function (k) { cm[k] = mean(ref.map(function (p) { return p.virtues[k]; })); });
+    var sdP = sd(ref.map(function (p) { return p.papsPoints; })) || 1;
+    var sdV = {}; VK.forEach(function (k) { sdV[k] = sd(ref.map(function (p) { return p.virtues[k]; })) || 1; });
     var members = state.teams[cur.team].map(function (id) { return byId[id]; }).filter(Boolean);
     var best = null, bestScore = Infinity;
     c.ids.forEach(function (id) {
@@ -411,12 +462,14 @@
     rest.sort(function (a, b) { return b.papsPoints - a.papsPoints; });
     rest.forEach(function (p) {
       var bestT = -1, bestLeft = -Infinity;
+      var okT = function (t) { return !state.split || state.teamGender[t] === gKey(p.gender); };   // 남녀 따로면 같은 성별 팀만
       for (var t = 0; t < state.K; t++) {
-        if (remainingSlots(state, t) <= 0) continue;
+        if (!okT(t) || remainingSlots(state, t) <= 0) continue;
         var left = state.mode === 'credit' ? state.budgets[t] - state.spent[t] : remainingSlots(state, t);
         if (left > bestLeft) { bestLeft = left; bestT = t; }
       }
-      if (bestT < 0) { bestT = 0; for (var u = 1; u < state.K; u++) if (state.teams[u].length < state.teams[bestT].length) bestT = u; }
+      if (bestT < 0) { for (var u = 0; u < state.K; u++) if (okT(u) && (bestT < 0 || state.teams[u].length < state.teams[bestT].length)) bestT = u; }
+      if (bestT < 0) bestT = 0;
       var cost = state.mode === 'credit' ? state.costs[p.id] : 0;
       state.picks.push({ team: bestT, id: p.id, round: -1, cost: cost, forced: true, auto: true, at: Date.now() });
       state.teams[bestT].push(p.id);
@@ -438,7 +491,7 @@
 
   api = {
     ENDGAME: { n: 18 }, /* 남은 선수가 이 수 이하이면 전체 팀 동시 소진 가능성 검사 */
-    profiles: profiles, computeCosts: computeCosts, makeBudgets: makeBudgets, teamSlots: teamSlots, buildPools: buildPools,
+    profiles: profiles, computeCosts: computeCosts, makeBudgets: makeBudgets, teamSlots: teamSlots, buildPools: buildPools, buildPoolsSplit: buildPoolsSplit,
     initDraft: initDraft, currentPick: currentPick, isDone: isDone, candidates: candidates, pick: pick, undo: undo,
     autoPick: autoPick, fillRemaining: fillRemaining, summary: summary, remainingSlots: remainingSlots, serpentine: serpentine,
     VIRTUE_TYPE: VIRTUE_TYPE, VIRTUE_ICON: VIRTUE_ICON
