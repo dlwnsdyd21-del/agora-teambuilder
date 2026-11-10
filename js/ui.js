@@ -1002,8 +1002,24 @@
     /* 팀 카드 (번호순 — 체력 서열이 드러나지 않도록). 남녀 따로면 그룹 제목으로 구분 */
     var noOf = function (id) { var p = byId[id]; return p && p.no !== null && p.no !== undefined ? p.no : 1e9; };
     var statOf = {}; ev.groups.forEach(function (g) { g.idx.forEach(function (t, j) { statOf[t] = g.stats.teams[j]; }); });
+    /* 남녀 따로: 그룹(남자 팀·여자 팀)마다 묶음을 만들어 나란히 배치. 묶음 폭은 팀 수에 비례, 모자라면 다음 줄로 */
+    teamsEl.classList.toggle('split', !!split);
+    /* 한 줄의 카드 수: 실제 폭에 들어가는 만큼, 줄이 나뉘면 줄마다 고르게 (6팀 → 5+1 이 아니라 3+3) */
+    var gridW = teamsEl.clientWidth || 1150;
+    var maxCols = Math.max(1, Math.floor((gridW + 13) / (230 + 13)));
+    var balance = function (k) { var c = Math.max(1, Math.min(k, maxCols)); return Math.ceil(k / Math.ceil(k / c)); };
+    teamsEl.style.setProperty('--cols', balance(teams.length));
+    var rowOf = {};
+    if (split) {
+      var sideBySide = teams.length <= Math.max(1, Math.floor((gridW - 26 + 13) / (220 + 13)));   // 두 묶음을 나란히 놓을 수 있는가
+      ev.groups.forEach(function (g) {
+        var k = g.idx.length, row = h('div', { class: 'team-row', style: '--gcols:' + (sideBySide ? k : balance(k)) });
+        teamsEl.appendChild(h('section', { class: 'team-group', style: 'flex:' + (sideBySide ? k + ' 1 0' : '1 1 100%') },
+          h('h3', { class: 'group-title', text: (g.gender === '남' ? '👦 ' : '👧 ') + g.label + ' · ' + k + '팀 · ' + g.size + '명' }), row));
+        g.idx.forEach(function (t) { rowOf[t] = row; });
+      });
+    }
     teams.forEach(function (rawIds, t) {
-      if (split) ev.groups.forEach(function (g) { if (g.idx[0] === t) teamsEl.appendChild(h('h3', { class: 'group-title', text: (g.gender === '남' ? '👦 ' : '👧 ') + g.label + ' · ' + g.size + '명' })); });
       var ids = rawIds.slice().sort(function (a, b) { return noOf(a) - noOf(b); });
       var tm = statOf[t] || { size: ids.length, male: 0, female: 0, unknown: 0, meanPaps: NaN, meanVirtues: {} };
       var card = h('div', { class: 'team', dataset: { team: t } },
@@ -1027,7 +1043,7 @@
           if (selectedMember && ids.indexOf(selectedMember) < 0) { var id = selectedMember; selectedMember = null; moveStudent(id, t); }
         });
       }
-      teamsEl.appendChild(card);
+      (rowOf[t] || teamsEl).appendChild(card);
     });
     if (!s.studentView) $('#dnd-hint').textContent = '학생을 다른 팀 카드로 끌어다 놓으면 이동하고, 학생을 클릭한 뒤 다른 학생을 클릭하면 서로 교환됩니다. 통계는 바로 다시 계산됩니다.';
 
@@ -1322,6 +1338,13 @@
     bindTopEvents(); bindImportEvents(); bindRosterEvents(); bindSettingsEvents(); bindExportEvents();
     St.onChange(render);
     render();
+    /* 창 폭이 바뀌면 카드 줄 나눔을 다시 계산 (휴대폰의 주소창 높이 변화는 무시) */
+    var lastW = window.innerWidth, rt = null;
+    window.addEventListener('resize', function () {
+      if (window.innerWidth === lastW) return;
+      lastW = window.innerWidth; clearTimeout(rt);
+      rt = setTimeout(function () { if (!/input|textarea|select/i.test((document.activeElement || {}).tagName || '')) render(); }, 200);
+    });
     if (!root.XLSX) toast('엑셀 라이브러리를 불러오지 못했습니다. xlsx 파일 대신 CSV/붙여넣기를 사용하세요.', true);
   }
 

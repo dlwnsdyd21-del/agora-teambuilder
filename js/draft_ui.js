@@ -94,6 +94,7 @@
 
   /* ============================================================ 준비 화면 */
   function showSetup() {
+    $('#d-main').classList.remove('side');
     $('#d-setup').hidden = false; $('#d-stage').hidden = true; $('#d-boards').hidden = true; $('#d-controls').hidden = true;
     $('#d-mode').textContent = '준비';
     var o = session.options;
@@ -224,6 +225,7 @@
     }, { noUndo: true });
     St.persistNow();
     ui.confettiDone = false; ui.revealNames = false; ui.revealAnim = false;
+    ui.lastReveal = null; ui.virtueFilter = null;   // 이전 편성의 공개 카드·덕목 선택이 새 편성에 남지 않도록
     showStage();
   }
 
@@ -239,6 +241,9 @@
   }
 
   function render() {
+    /* 진행 중 + 넓은 화면: 선수 카드(왼쪽) 옆에 팀 보드(오른쪽)를 고정 — 지명하는 동안 팀 현황이 항상 보이도록. 완료 후에는 보드를 전체 폭으로 */
+    $('#d-main').classList.toggle('side', !D.isDone(draft));
+    $('#d-main').classList.toggle('wide-boards', draft.mode !== 'credit');   // 카드가 적은 방식은 보드 쪽을 더 넓게
     renderHead(); renderPool(); renderBoards(); updateTimer();
     $('#d-undo').disabled = !draft.picks.length;
     $('#d-auto').disabled = D.isDone(draft);
@@ -297,7 +302,7 @@
     if (!cur) { renderDone(pool); return; }
     if (draft.mode === 'auto') {
       var box = h('div', { class: 'reveal' });
-      if (ui.lastReveal && byId[ui.lastReveal]) {
+      if (ui.lastReveal && byId[ui.lastReveal] && draft.picks.length) {
         var c = card(ui.lastReveal, {}); c.classList.add('next-card'); box.appendChild(c);
         box.appendChild(h('div', { class: 'hint', text: draft.teamNames[draft.picks[draft.picks.length - 1].team] + ' 소속으로 공개되었습니다.' }));
       } else box.appendChild(h('div', { class: 'hint', text: '버튼을 누르면 ' + draft.teamNames[cur.team] + '의 다음 선수가 공개됩니다. (Space)' }));
@@ -341,8 +346,49 @@
   function renderBoards() {
     var box = clear($('#d-boards'));
     var cur = D.currentPick(draft);
+    /* 남녀 따로: 남자 팀 묶음과 여자 팀 묶음을 나란히(폭이 모자라면 위아래로) 배치 — 한 화면에 모두 보이도록 */
+    box.classList.toggle('split', !!draft.split);
+    box.classList.toggle('done', D.isDone(draft));
+    /* 옆 배치(넓은 화면·진행 중)에서의 보드 줄 나눔과 글자 크기 계산용 값:
+     * --rows 팀당 최대 인원, --cols 한 줄의 보드 수, --stack 세로로 쌓이는 보드 줄 수. 실제 보드 영역 폭으로 정함 */
+    var K = draft.K, cols, stack, stackGroups = false, gcols = {};
+    var sideOn = getComputedStyle($('#d-main')).display === 'grid';
+    var minW = sideOn ? 178 : (window.innerWidth <= 760 ? 150 : 180);          // 보드 하나의 최소 폭
+    var maxCols = box.clientWidth ? Math.max(1, Math.floor((box.clientWidth - 12) / (minW + 12))) : 99;
+    /* 한 줄에 다 못 놓으면 줄 수를 정한 뒤 줄마다 고르게 (6팀 → 5+1 이 아니라 3+3) */
+    var balance = function (k, pref) { var c = Math.max(1, Math.min(pref, maxCols, k)); return Math.ceil(k / Math.ceil(k / c)); };
+    if (draft.split) {
+      var km = draft.split['남'] | 0, kf = draft.split['여'] | 0;
+      stackGroups = km > 0 && kf > 0 && (K > maxCols || (sideOn && K > 4));   // 나란히 못 놓으면 남자 팀 줄 / 여자 팀 줄로 쌓음
+      gcols = { 남: km ? balance(km, km) : 1, 여: kf ? balance(kf, kf) : 1 };
+      if (!stackGroups) gcols = { 남: Math.max(1, km), 여: Math.max(1, kf) };
+      cols = stackGroups ? Math.max(gcols['남'], gcols['여']) : K;
+      stack = stackGroups ? (km ? Math.ceil(km / gcols['남']) : 0) + (kf ? Math.ceil(kf / gcols['여']) : 0) : 1;
+    } else {
+      cols = balance(K, sideOn ? (K <= 4 ? K : Math.ceil(K / 2)) : K);
+      stack = Math.ceil(K / cols);
+    }
+    box.classList.toggle('stack-groups', stackGroups);
+    box.classList.toggle('credit', draft.mode === 'credit');
+    /* --chrome: 보드 한 줄에서 선수 줄 말고 차지하는 높이(머리·예산·요약·그룹 제목) */
+    box.style.setProperty('--chrome', (7.2 + (draft.mode === 'credit' ? 2.4 : 0) + (draft.split ? 2.7 : 0)) + 'rem');
+    box.style.setProperty('--rows', Math.max.apply(null, draft.slots.concat([1])));
+    box.style.setProperty('--cols', cols);
+    box.style.setProperty('--stack', stack);
+    var rows = {};
+    if (draft.split) {
+      [['남', '👦 남자 팀'], ['여', '👧 여자 팀']].forEach(function (g) {
+        var k = draft.split[g[0]] | 0;
+        if (!k) return;
+        var n = 0; draft.slots.forEach(function (s, t) { if (draft.teamGender[t] === g[0]) n += s; });
+        var row = h('div', { class: 'board-row', style: '--gcols:' + (gcols[g[0]] || k) });
+        /* flex: 팀 수에 비례해 넓어지고, 팀당 최소 폭을 못 채우면 다음 줄로 */
+        box.appendChild(h('section', { class: 'board-group', style: 'flex:' + (stackGroups ? '1 1 100%' : k + ' 1 0') },
+          h('div', { class: 'group-title' }, g[1], h('span', { class: 'sub', text: k + '팀 · ' + n + '명' })), row));
+        rows[g[0]] = row;
+      });
+    }
     for (var t = 0; t < draft.K; t++) (function (t) {
-      if (draft.split && (t === 0 || t === draft.split['남'])) box.appendChild(h('div', { class: 'group-title', text: t === 0 ? '👦 남자 팀' : '👧 여자 팀' }));
       var b = h('div', { class: 'board' + (cur && cur.team === t ? ' active' : ''), style: '--team:' + color(t), dataset: { team: t } });
       b.appendChild(h('div', { class: 'board-head' }, h('b', { text: draft.teamNames[t] }), h('span', { class: 'cnt', text: draft.teams[t].length + ' / ' + draft.slots[t] + '명' })));
       if (draft.mode === 'credit') {
@@ -376,7 +422,7 @@
         if (ui.detail) foot.appendChild(h('span', { text: '체력 평균 ' + fmt(mp, 1) }));
         b.appendChild(foot);
       }
-      box.appendChild(b);
+      ((draft.split && rows[draft.teamGender[t]]) || box).appendChild(b);
     })(t);
   }
 
@@ -538,6 +584,12 @@
     $('#d-auto').addEventListener('click', autoPick);
     $('#d-undo').addEventListener('click', undo);
     $('#d-restart').addEventListener('click', restart);
+    /* 창 크기가 바뀌면 보드 줄 나눔을 다시 계산 */
+    var resizeTimer = null;
+    window.addEventListener('resize', function () {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () { if (draft && !$('#d-stage').hidden) renderBoards(); }, 150);
+    });
     $('#d-finish').addEventListener('click', finish);
     document.addEventListener('keydown', function (e) {
       if (!draft || /input|textarea|select/i.test(document.activeElement.tagName)) return;
