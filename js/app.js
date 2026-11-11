@@ -5,6 +5,7 @@
     try {
       window.AgoraState.load();
       window.AgoraUI.init();
+      if (window.AgoraWizard) window.AgoraWizard.init();
     } catch (e) {
       console.error(e);
       var el = document.createElement('div');

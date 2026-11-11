@@ -217,7 +217,8 @@ table.roster tr.inactive input[data-field=name] { text-decoration: line-through;
 .result-note { margin-top: .8rem; }
 .result-note label { display: flex; flex-direction: column; gap: .25rem; font-weight: 600; font-size: .9rem; }
 .result-note textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: .45rem .6rem; font-weight: 400; resize: vertical; }
-.class-group select { max-width: 13em; padding: .35rem .4rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.class-group { flex-wrap: wrap; max-width: 100%; }
+.class-group select { min-width: 0; max-width: 13em; padding: .35rem .4rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 
 .balance { margin-top: 1rem; overflow: auto; }
 .balance table { border-collapse: collapse; width: 100%; font-size: .86rem; }
@@ -242,6 +243,34 @@ table.roster tr.inactive input[data-field=name] { text-decoration: line-through;
 .toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%); background: #1b2430; color: #fff; padding: .6rem 1rem; border-radius: 10px; font-size: .9rem; z-index: 50; box-shadow: var(--shadow); max-width: 90vw; }
 .toast.error { background: var(--danger); }
 
+/* ---------- 단계별 화면 (wizard.js) ---------- */
+body.wizard main > section.card { display: none; }
+body.wizard main > section.card.step-active { display: block; animation: stepIn .25s ease-out; }
+body.wizard.student-view main > #sec-result { display: block; }   /* 학생용 보기는 결과만 */
+@keyframes stepIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+nav.steps { align-items: center; justify-content: space-between; max-width: 1240px; margin: 0 auto; width: 100%; }
+.stepper { list-style: none; margin: 0; padding: 0; display: flex; gap: .3rem; flex: 1; counter-reset: s; }
+.stepper .step { flex: 1; position: relative; min-width: 0; }
+.stepper .step:not(:last-child)::after { content: ''; position: absolute; top: 50%; right: -.3rem; width: .3rem; height: 2px; background: var(--line); }
+.stepper button { width: 100%; display: flex; align-items: center; gap: .45rem; padding: .5rem .7rem; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--muted); cursor: pointer; font-size: .95rem; font-weight: 600; text-align: left; transition: background .15s, border-color .15s; }
+.stepper button:hover { border-color: var(--accent); }
+.stepper b { flex: none; display: inline-grid; place-items: center; width: 1.7em; height: 1.7em; border-radius: 50%; background: #e3e9f3; color: var(--muted); font-size: .9em; }
+.stepper .lbl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stepper .done button { color: var(--ok); }
+.stepper .done b { background: var(--ok); color: #fff; }
+.stepper .current button { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 4px 14px rgba(31, 111, 235, .3); }
+.stepper .current b { background: #fff; color: var(--accent); }
+.onepage { font-size: .85rem; color: var(--muted); white-space: nowrap; margin-left: .6rem; display: inline-flex; align-items: center; gap: .25rem; }
+body:not(.wizard) .step-guide, body:not(.wizard) .step-nav { display: none; }
+.step-guide { display: flex; gap: .9rem; align-items: flex-start; background: #eef4ff; border: 1px solid #c9dbff; border-radius: 12px; padding: .75rem 1rem; margin: .3rem 0 1rem; }
+.step-guide .step-count { flex: none; font-weight: 800; color: var(--accent); background: #fff; border-radius: 999px; padding: .2rem .7rem; font-size: .9rem; border: 1px solid #c9dbff; }
+.step-guide ol { margin: 0; padding-left: 1.2rem; font-size: 1rem; line-height: 1.6; color: var(--ink); }
+.step-nav { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.step-status { flex: 1 1 260px; text-align: center; color: var(--ok); font-weight: 600; font-size: .95rem; }
+.step-status.wait { color: var(--muted); font-weight: 500; }
+.btn.pulse { animation: pulseBtn 1.6s ease-in-out infinite; }
+@keyframes pulseBtn { 0%, 100% { box-shadow: 0 0 0 0 rgba(31, 111, 235, .45); } 50% { box-shadow: 0 0 0 8px rgba(31, 111, 235, 0); } }
+
 /* ---------- 간단 보기 (기본) / 자세히 보기 ---------- */
 body.simple .adv { display: none !important; }
 body:not(.simple) .simple-only { display: none !important; }
@@ -257,6 +286,8 @@ body.student-view main { padding-top: 1rem; }
 @media print {
   body { background: #fff; font-size: 12px; }
   .topbar, .steps, footer, .no-print, .teacher-only, .toast, #charts { display: none !important; }
+  body.wizard main > #sec-result { display: block !important; }
+  .step-guide, .step-nav { display: none !important; }
   main { padding: 0; max-width: none; }
   .card { border: none; box-shadow: none; padding: 0; }
   .teams-grid { grid-template-columns: repeat(3, 1fr); gap: .5rem; }
@@ -297,6 +328,17 @@ body.student-view main { padding-top: 1rem; }
   .switch { font-size: 1rem; padding: .4rem .8rem; }
   .steps { padding: .6rem .9rem; gap: .5rem; }
   .steps a { font-size: .98rem; padding: .45rem .85rem; }
+  .topbar-actions .class-group { width: 100%; }
+  .class-group .inline { flex: 1 1 auto; }
+  .class-group select { flex: 1 1 8em; }
+  .stepper { gap: .25rem; }
+  .stepper button { flex-direction: column; gap: .15rem; padding: .4rem .2rem; font-size: .8rem; text-align: center; }
+  .stepper .lbl { white-space: normal; line-height: 1.2; }
+  .onepage { display: none; }
+  .step-guide { flex-direction: column; gap: .4rem; }
+  .step-nav .btn.big { flex: 1 1 100%; justify-content: center; }
+  .step-nav > span:first-child { display: none; }
+  .step-status { order: -1; flex-basis: 100%; }
   main { padding: .4rem .9rem 2rem; gap: .9rem; }
   .card { padding: 1rem .9rem; }
   .desc, .hint { font-size: .95rem; }

@@ -143,7 +143,9 @@
       var r = applyPending(kind, true);
       if (r === true) {
         var roster = $('#sec-roster');
-        if (roster) roster.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        /* 단계별 화면이면 1단계에 머물며 '다음' 버튼을 강조, 한 페이지 보기면 명단으로 스크롤 */
+        if (root.AgoraWizard && root.AgoraWizard.isOn()) { var nv = $('#sec-import .step-nav'); if (nv) nv.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+        else if (roster) roster.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
       }
       if (r === 'panel') return;   // 학급 선택 패널이 떠 있음
@@ -304,6 +306,27 @@
       }
       if (!choice) { renderClassPanel(kind, pd, col, groups, cur); return 'panel'; }
       recs = choice.recs.slice();
+    } else if (s.students.length) {
+      /* 파일에 반 정보가 없으면(나이스 조회 파일 등) 이름으로 학급을 확인: 현재 명단과 거의 안 겹치면
+       * 저장된 학급 중 이름이 맞는 반으로 전환하고, 없으면 섞기 전에 물어봄 */
+      var named = recs.filter(function (r) { return r.name; });
+      if (named.length >= 3) {
+        var curHit = nameOverlap(s.students, named);
+        if (curHit < Math.ceil(named.length * 0.5)) {
+          var bestSaved = null, bestHit = 0;
+          St.listSaved().forEach(function (e) {
+            if (e.label === s.classLabel) return;
+            var hit = nameOverlap((e.session && e.session.students) || [], named);
+            if (hit > bestHit) { bestHit = hit; bestSaved = e; }
+          });
+          if (bestSaved && bestHit >= Math.ceil(named.length * 0.6)) {
+            switchClass(bestSaved.label);
+            finishApply(kind, pd, recs, col, { excluded: 0, classCount: 0, chosen: null, switched: bestSaved.label });
+            return true;
+          }
+          renderNameMismatchPanel(kind, pd, col, curHit, named.length); return 'panel';
+        }
+      }
     }
     finishApply(kind, pd, recs, col, { excluded: col.recs.length - recs.length, classCount: known.length, unknownCount: known.length ? (groups.length - known.length ? groups[groups.length - 1].recs.length : 0) : 0, chosen: choice });
     return true;
@@ -329,7 +352,7 @@
     pending[kind] = null;
     clear($('#map-' + kind));
     var rep = St.get().imports[kind] || {};
-    var msg = (rep.added + rep.updated || recs.length) + '명의 자료를 반영했습니다' + (extra.chosen ? ' (' + extra.chosen.label + ' 학급)' : '') + (extra.excluded ? ' · 다른 반 ' + extra.excluded + '명은 제외' : '') + '.';
+    var msg = (extra.switched ? '이름이 맞는 ' + extra.switched + ' 학급으로 전환했습니다. ' : '') + (rep.added + rep.updated || recs.length) + '명의 자료를 반영했습니다' + (extra.chosen ? ' (' + extra.chosen.label + ' 학급)' : '') + (extra.excluded ? ' · 다른 반 ' + extra.excluded + '명은 제외' : '') + '.';
     if (col.skipped.length) msg += ' 건너뛴 행 ' + col.skipped.length + '개는 1단계 검증 결과에서 확인하세요.';
     toast(msg + inferMsg);
   }
@@ -349,6 +372,26 @@
       }
     }
     return { applied: applied, inf: inf };
+  }
+
+  /* 반 정보가 없는 파일인데 현재 명단과 이름이 거의 맞지 않을 때: 섞기 전에 확인 */
+  function renderNameMismatchPanel(kind, pd, col, hit, total) {
+    var box = clear($('#map-' + kind));
+    var s = St.get();
+    var wrap = h('div', { class: 'map-box class-panel' },
+      h('div', { class: 'row wrap' }, h('b', { text: '⚠ 명단과 이름이 맞지 않습니다' })),
+      h('p', { class: 'hint', text: '현재 화면' + (s.classLabel ? '(' + s.classLabel + ' 학급, ' : '(') + s.students.length + '명)의 이름과 이 파일(' + pd.fileName + ')의 이름이 ' + total + '명 중 ' + hit + '명만 같습니다. 다른 반 파일이거나 설문의 학번이 잘못 입력됐을 수 있어, 아직 합치지 않았습니다.' }),
+      h('div', { class: 'row wrap', style: 'margin-top:.4rem' },
+        h('button', { class: 'btn primary', type: 'button', title: '이름이 같은 학생은 이름으로, 나머지는 번호로 연결합니다', onclick: function () { finishApply(kind, pd, col.recs, col, { excluded: 0, classCount: 0, chosen: null }); } }, '그래도 이 학급에 합치기'),
+        h('button', { class: 'btn', type: 'button', title: '현재 학급은 저장하고, 이 파일로 새 학급을 만듭니다', onclick: function () {
+          var lbl = prompt('새 학급 이름을 입력하세요 (예: 1-3)', '');
+          if (!lbl || !lbl.trim()) return;
+          switchClass(lbl.trim());
+          finishApply(kind, pd, col.recs, col, { excluded: 0, classCount: 0, chosen: null });
+        } }, '새 학급으로 불러오기'),
+        h('button', { class: 'btn ghost', type: 'button', onclick: function () { pending[kind] = null; clear(box); } }, '취소')));
+    box.appendChild(wrap);
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   /* 여러 반 파일: 어느 반을 불러올지 고르는 패널 (또는 현재 학급과 다른 반 경고) */
@@ -450,14 +493,35 @@
   function applyRecordsTo(s, kind, recs, meta) {
     var byKey = {};
     s.students.forEach(function (st) { var k = keyOf(st); if (k) byKey[k] = st; });
-    var added = 0, updated = 0, mism = [], touched = {};
+    /*
+     * 학생 연결 순서: ① 이름이 명단에 한 명뿐이면 이름으로 (학생이 설문에 학번을 잘못 적어도 연결)
+     *               ② 아니면 번호로. 같은 번호인데 이름이 다르고 그 이름이 파일 안의 다른 학생이면 새 학생으로 둠.
+     * 나이스(PAPS) 파일의 번호는 공식이므로, 이름으로 연결된 학생의 번호가 다르면 나이스 번호로 고침.
+     */
+    var byName = {};
+    s.students.forEach(function (st) { if (st.name) { var nk = normName(st.name); (byName[nk] = byName[nk] || []).push(st); } });
+    var fileNames = {}; recs.forEach(function (r) { if (r.name) fileNames[normName(r.name)] = (fileNames[normName(r.name)] || 0) + 1; });
+    var added = 0, updated = 0, mism = [], touched = {}, renumbered = [], usedBy = {};
     recs.forEach(function (r) {
       var k = keyOf(r);
-      var st = k ? byKey[k] : null;
+      var st = null;
+      var nk = r.name ? normName(r.name) : null;
+      if (nk && byName[nk] && byName[nk].length === 1 && fileNames[nk] === 1) st = byName[nk][0];
+      if (!st && k && byKey[k]) {
+        var cand = byKey[k];
+        /* 번호는 같지만 이름이 다른데, 그 학생 이름이 파일에 따로 있으면 다른 학생 */
+        if (!(cand.name && nk && normName(cand.name) !== nk && fileNames[normName(cand.name)])) st = cand;
+      }
+      if (st && usedBy[st.id] && usedBy[st.id] !== (nk || k)) st = null;   // 한 학생에 두 행이 붙지 않도록
+      if (st && kind === 'paps' && r.no !== null && r.no !== undefined && st.no !== r.no && nk && st.name && normName(st.name) === nk) {
+        renumbered.push({ name: st.name, from: st.no, to: r.no });
+        st.no = r.no;
+      }
       if (!st) {
         st = { id: k || ('u' + Date.now() + Math.floor(Math.random() * 1e6)), no: r.no === undefined ? null : r.no, name: r.name || null, gender: null,
                papsRaw: null, papsGiven: null, items: null, virtuesGiven: null, source: { paps: false, survey: false } };
-        s.students.push(st); if (k) byKey[k] = st; added++; touched[st.id] = true;
+        if (s.students.some(function (x) { return x.id === st.id; })) st.id = 'u' + Date.now().toString(36) + Math.floor(Math.random() * 1e6);
+        s.students.push(st); if (k && !byKey[k]) byKey[k] = st; added++; touched[st.id] = true;
       } else {
         if (!touched[st.id]) { updated++; touched[st.id] = true; }   // 같은 학생이 두 행이면 한 명으로 셈
         /* 같은 번호인데 이름이 다르면 보고 (나이스 이름을 공식으로 봄) */
@@ -466,6 +530,7 @@
           if (kind === 'paps') st.name = r.name;
         }
       }
+      usedBy[st.id] = nk || k;
       if (!st.source) st.source = { paps: false, survey: false };
       if (!st.name && r.name) st.name = r.name;
       if (r.gender) { st.gender = r.gender; st.genderInferred = false; }
@@ -497,7 +562,7 @@
     }
     if (!s.classLabel && s.classInfo) s.classLabel = classLabelOf(s.classInfo);
     if (meta.papsGivenType) s.options.papsGivenType = meta.papsGivenType;
-    return { fileName: meta.fileName, sheetName: meta.sheetName, rowCount: recs.length, added: added, updated: updated, nameMismatch: mism, at: new Date().toISOString() };
+    return { fileName: meta.fileName, sheetName: meta.sheetName, rowCount: recs.length, added: added, updated: updated, nameMismatch: mism, renumbered: renumbered, at: new Date().toISOString() };
   }
   function applyImport(kind, recs, meta) {
     St.update(function (s) { s.imports[kind] = applyRecordsTo(s, kind, recs, meta); });
@@ -533,6 +598,7 @@
         if (im.skipped && im.skipped.length) issues.push('건너뛴 행 ' + im.skipped.length);
         if (im.duplicates && im.duplicates.length) issues.push('번호 중복 ' + im.duplicates.length + '건');
         if (im.nameMismatch && im.nameMismatch.length) issues.push('이름 불일치 ' + im.nameMismatch.length + '건');
+        if (im.renumbered && im.renumbered.length) issues.push('번호 정정 ' + im.renumbered.length + '명');
         if (im.partial) issues.push('응답 일부 누락 ' + im.partial + '명');
         if (im.noData) issues.push('점수 없는 행 ' + im.noData);
         if (issues.length) {
@@ -542,6 +608,7 @@
           if ((im.skipped || []).length > 30) ul.appendChild(h('li', { class: 'hint', text: '… 외 ' + (im.skipped.length - 30) + '행' }));
           (im.duplicates || []).forEach(function (d) { ul.appendChild(h('li', { text: (d.key ? d.key + ' ' : '') + (d.no !== null && d.no !== undefined ? d.no + '번' : d.name) + ' — ' + d.rows.join(', ') + '행에 중복 (마지막 행 적용)' })); });
           (im.nameMismatch || []).forEach(function (x) { ul.appendChild(h('li', { text: x.no + '번 이름 불일치 — 명단 "' + x.roster + '" / 파일 "' + x.file + '" → ' + (x.kept === 'file' ? '나이스 파일 이름으로 바꿈' : '명단 이름 유지') + '. 같은 번호의 다른 학생이라면 반이 섞였는지 확인하세요.' })); });
+          (im.renumbered || []).forEach(function (x) { ul.appendChild(h('li', { text: x.name + ' — 설문의 번호 ' + x.from + '번을 나이스 번호 ' + x.to + '번으로 고쳤습니다 (이름으로 연결).' })); });
           if (im.partial) ul.appendChild(h('li', { text: '32문항 중 일부에 응답이 없는 학생 ' + im.partial + '명 — 덕목별 5문항 이상이면 평균을 쓰고, 미만이면 학급 평균으로 대체합니다.' }));
           if (im.noData) ul.appendChild(h('li', { text: '점수 열이 비어 있는 행 ' + im.noData + '개 — 명단에는 들어가며 결측(대체)으로 표시됩니다.' }));
           if (im.excluded) ul.appendChild(h('li', { text: '다른 반 ' + im.excluded + '명은 반영하지 않았습니다. 그 반을 편성하려면 "다른 반 보기"에서 반을 고르거나 모든 반을 각각 저장하세요.' }));
