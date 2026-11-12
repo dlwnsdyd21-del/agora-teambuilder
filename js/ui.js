@@ -446,7 +446,7 @@
     finishApply(kind, pd, g.recs.slice(), col, { excluded: col.recs.length - g.recs.length, classCount: groups.length, chosen: g.key ? g : null });
   }
   /* 학급 전환: 현재 화면을 학급 이름으로 저장하고, 저장본(없으면 새 세션)을 불러옴 */
-  function switchClass(label, classInfo) {
+  function switchClass(label, classInfo, quiet) {
     var s = St.get();
     var savedPrev = false;
     if (s.students.length) {
@@ -459,8 +459,91 @@
     St.replace(target);
     pending = { paps: null, survey: null }; lastImport = { paps: null, survey: null };
     clear($('#map-paps')); clear($('#map-survey'));
-    toast(label + ' 학급으로 전환했습니다' + (savedPrev ? ' (이전 학급은 저장됨)' : '') + '.');
+    if (!quiet) toast(label + ' 학급으로 전환했습니다' + (savedPrev ? ' (이전 학급은 저장됨)' : '') + '.');
+    return savedPrev;
   }
+  /* ---------- 새 반 추가 ---------- */
+  /* 다음 반 이름 제안: 현재·저장된 학급이 "1-3" 꼴이면 같은 학년의 가장 큰 반 + 1 */
+  function suggestNextClass(s) {
+    var cur = currentClassInfo(s);
+    if (!cur || cur.cls === null || cur.cls === undefined || cur.grade === null || cur.grade === undefined) return '';
+    var mx = cur.cls;
+    St.listSaved().forEach(function (e) { var pc = P.parseClass(e.label); if (pc && pc.grade === cur.grade && pc.cls > mx) mx = pc.cls; });
+    return cur.grade + '-' + (mx + 1);
+  }
+  /* 학생과 무관한 편성 설정은 새 반에도 이어받음 (제약·주장처럼 학생에 묶인 설정은 제외) */
+  var CARRY_OPTIONS = ['teamCount', 'genderBalance', 'genderSeparate', 'teamCountM', 'teamCountF', 'papsTolerance', 'includeBmi', 'schoolLevel', 'defaultGrade', 'papsGivenType', 'draftMode', 'creditFitnessWeight', 'draftTimerSec', 'draftAnonymous'];
+  function addNewClass() {
+    var s = St.get();
+    var lbl = prompt('새로 추가할 반 이름을 입력하세요 (예: 1-4)\n현재 학급은 저장해 두고, 비어 있는 새 반을 엽니다.', suggestNextClass(s));
+    if (lbl === null) return;
+    lbl = lbl.trim();
+    if (!lbl) return;
+    if (lbl === (s.classLabel || '')) { toast('지금 화면이 이미 "' + lbl + '" 학급입니다.'); return; }
+    if (St.listSaved().some(function (e) { return e.label === lbl; })) {
+      if (confirm('"' + lbl + '" 학급은 이미 저장되어 있습니다. 그 학급으로 전환할까요?')) switchClass(lbl);
+      return;
+    }
+    var keep = {};
+    CARRY_OPTIONS.forEach(function (k) { if (s.options[k] !== undefined) keep[k] = s.options[k]; });
+    var savedPrev = switchClass(lbl, null, true);
+    St.update(function (ss) { Object.assign(ss.options, keep); }, { noUndo: true });
+    St.putSaved(lbl, St.get());   // 학급 전환 목록에 바로 보이도록
+    render();
+    if (root.AgoraWizard && root.AgoraWizard.isOn()) root.AgoraWizard.go(0);
+    toast('새 반 "' + lbl + '"을(를) 추가했습니다' + (savedPrev ? ' (이전 학급은 저장됨)' : '') + '. 1단계에서 자료를 올리세요.');
+  }
+  /* ---------- 학급 목록 순서 바꾸기 ---------- */
+  var orderDrag = null;
+  function renderOrderList() {
+    var list = clear($('#class-order-list'));
+    var saved = St.listSaved(), cur = St.get().classLabel || '';
+    if (!saved.length) { list.appendChild(h('li', { class: 'empty', text: '저장된 학급이 없습니다. "학급 저장"이나 "＋ 새 반"으로 학급을 만들면 여기에 나타납니다.' })); }
+    saved.forEach(function (e, i) {
+      var ss = e.session || {};
+      var li = h('li', { class: e.label === cur ? 'cur' : '', draggable: true, dataset: { label: e.label } },
+        h('span', { class: 'grip', text: '⠿', title: '끌어서 옮기기' }),
+        h('span', { class: 'nm' }, h('b', { text: e.label }), h('span', { class: 'hint', text: ' ' + (ss.students || []).length + '명' + (ss.result ? ' · 편성됨' : '') + (e.label === cur ? ' · 현재' : '') })),
+        h('button', { class: 'btn small', type: 'button', disabled: i === 0, title: '위로', 'aria-label': e.label + ' 위로', onclick: function () { St.moveSaved(e.label, -1); afterOrderChange(e.label, -1); } }, '▲'),
+        h('button', { class: 'btn small', type: 'button', disabled: i === saved.length - 1, title: '아래로', 'aria-label': e.label + ' 아래로', onclick: function () { St.moveSaved(e.label, 1); afterOrderChange(e.label, 1); } }, '▼'));
+      li.addEventListener('dragstart', function (ev) { orderDrag = e.label; ev.dataTransfer.effectAllowed = 'move'; try { ev.dataTransfer.setData('text/plain', e.label); } catch (err) { /* ignore */ } li.classList.add('dragging'); });
+      li.addEventListener('dragend', function () { orderDrag = null; li.classList.remove('dragging'); $$('#class-order-list li').forEach(function (x) { x.classList.remove('over'); }); });
+      li.addEventListener('dragover', function (ev) { if (orderDrag && orderDrag !== e.label) { ev.preventDefault(); li.classList.add('over'); } });
+      li.addEventListener('dragleave', function () { li.classList.remove('over'); });
+      li.addEventListener('drop', function (ev) {
+        ev.preventDefault();
+        if (!orderDrag || orderDrag === e.label) return;
+        var labels = St.listSaved().map(function (x) { return x.label; });
+        var from = labels.indexOf(orderDrag), to = labels.indexOf(e.label);
+        if (from < 0 || to < 0) return;
+        labels.splice(to, 0, labels.splice(from, 1)[0]);   // 끌어온 줄을 놓은 줄 자리에
+        St.reorderSaved(labels);
+        orderDrag = null;
+        afterOrderChange();
+      });
+      list.appendChild(li);
+    });
+    $('#btn-order-sort').disabled = saved.length < 2;
+  }
+  /* 순서를 바꾼 뒤: 목록·상단 선택 칸을 다시 그리고, 방금 누른 ▲▼에 초점을 돌려줌 */
+  function afterOrderChange(label, dir) {
+    renderOrderList(); renderTop(St.get());
+    if (!label) return;
+    var li = $$('#class-order-list li').filter(function (x) { return x.dataset.label === label; })[0];
+    if (!li) return;
+    var btns = $$('button', li), b = btns[dir < 0 ? 0 : 1];
+    if (b && b.disabled) b = btns[dir < 0 ? 1 : 0];
+    if (b) b.focus();
+  }
+  function openOrderDialog() {
+    var s = St.get();
+    /* 현재 학급도 이름이 있으면 저장본을 갱신해 목록에 함께 보이게 */
+    if (s.classLabel && s.students.length) St.putSaved(s.classLabel, s);
+    renderOrderList(); renderTop(St.get());
+    var dlg = $('#class-order');
+    if (dlg.showModal) { if (!dlg.open) dlg.showModal(); } else dlg.setAttribute('open', '');
+  }
+  function closeOrderDialog() { var dlg = $('#class-order'); if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
   /* 여러 반 파일의 모든 반을 각각 학급 저장본으로 (현재 학급과 같은 반은 현재 화면에 반영) */
   function saveAllClasses(kind, pd, col, groups) {
     var s = St.get();
@@ -676,8 +759,20 @@
         var srcText = d && d.source === 'neis' ? '나이스 조회 양식의 영역별 점수를 그대로 사용'
           : d && d.source === 'official' ? '공식 기준표 (' + d.gradeKey + ' ' + d.gender + ')' : (d && d.source === 'relative' ? '학급 내 상대점수 (성별 또는 학년 기준표 없음)' : '');
         var scaledText = d && d.scaled ? '\n※ ' + d.nAreas + '개 영역만 있어 100점 만점으로 환산 (없음: ' + d.missing.join(', ') + ')' : '';
-        papsTd.appendChild(h('span', { title: srcText + '\n' + lines + scaledText }, fmt(p.papsPoints, 1) + '점'));
+        /* 총점 칸은 교사가 직접 고칠 수 있음 (기록과 실제 수행 능력의 차이가 클 때). 원래 점수는 data-base 에 두고, 비우거나 같은 값이면 수정 해제 */
+        var over = !!(d && d.overridden);
+        var baseTotal = over ? d.computedTotal : (p.papsImputed ? null : p.papsPoints);
+        var hasBase = typeof baseTotal === 'number' && isFinite(baseTotal);
+        var shown = over ? st.papsOverride : (hasBase ? Math.round(baseTotal * 10) / 10 : '');
+        papsTd.appendChild(h('input', { type: 'number', step: 'any', min: 0, max: 100, 'data-field': 'papsOverride', 'data-base': hasBase ? baseTotal : '', value: shown,
+          class: 'paps-edit' + (over ? ' edited' : ''), placeholder: p.papsImputed ? fmt(p.papsPoints, 0) : '',
+          title: srcText + '\n' + lines + scaledText + '\n\n숫자를 고치면 교사 수정 점수로 편성합니다. 칸을 비우면 원래 점수로 돌아갑니다.' }));
+        papsTd.appendChild(h('span', { class: 'unit', text: '점' }));
         papsTd.appendChild(h('span', { class: 'badge', text: p.papsGrade + '등급' }));
+        if (over) {
+          papsTd.appendChild(h('span', { class: 'badge warn', text: '교사 수정', title: '교사가 직접 고친 점수입니다.' + (hasBase ? ' 원래 점수 ' + fmt(baseTotal, 1) + '점' : '') }));
+          papsTd.appendChild(h('button', { class: 'btn ghost small', type: 'button', 'data-action': 'reset-paps', title: hasBase ? '원래 점수(' + fmt(baseTotal, 1) + '점)로 되돌리기' : '수정한 점수 지우기' }, '↺'));
+        }
         if (d && d.source === 'neis') papsTd.appendChild(h('span', { class: 'badge ok', text: '나이스', title: '나이스가 계산한 점수' }));
         if (d && d.source === 'relative') papsTd.appendChild(h('span', { class: 'badge warn', text: '상대', title: '성별(또는 학년) 기준표가 없어 학급 내 백분위로 매긴 점수입니다. 성별을 입력하면 공식 점수로 바뀝니다.' }));
         if (d && d.scaled) papsTd.appendChild(h('span', { class: 'badge warn', text: '환산', title: '일부 영역 기록이 없어 100점 만점으로 환산했습니다' }));
@@ -719,8 +814,9 @@
     var onlyP = s.students.filter(function (x) { return x.source && x.source.paps && !x.source.survey; }).length;
     var onlyS = s.students.filter(function (x) { return x.source && !x.source.paps && x.source.survey; }).length;
     var inact = St.inactiveStudents(s).length;
-    var link = (s.imports && s.imports.paps && s.imports.survey) ? ' · 두 자료 연결 ' + both + '명' + (onlyP ? ' · PAPS만 ' + onlyP : '') + (onlyS ? ' · 설문만 ' + onlyS : '') : '';
-    $('#roster-summary').textContent = s.students.length ? ((s.classLabel ? s.classLabel + ' 학급 · ' : '') + '총 ' + s.students.length + '명 · 남 ' + m + ' 여 ' + f + (u ? ' 미상 ' + u : '') + ' · PAPS ' + hasP + '명' + (rel ? ' (상대점수 ' + rel + '명)' : '') + ' · 인성 ' + hasV + '명' + link + (inact ? ' · 오늘 불참 ' + inact + '명 (편성 ' + (s.students.length - inact) + '명)' : '')) : '';
+    var edited = prep.filter(function (p) { return p.papsDetail && p.papsDetail.overridden; }).length;
+    var link =(s.imports && s.imports.paps && s.imports.survey) ? ' · 두 자료 연결 ' + both + '명' + (onlyP ? ' · PAPS만 ' + onlyP : '') + (onlyS ? ' · 설문만 ' + onlyS : '') : '';
+    $('#roster-summary').textContent = s.students.length ? ((s.classLabel ? s.classLabel + ' 학급 · ' : '') + '총 ' + s.students.length + '명 · 남 ' + m + ' 여 ' + f + (u ? ' 미상 ' + u : '') + ' · PAPS ' + hasP + '명' + (rel ? ' (상대점수 ' + rel + '명)' : '') + (edited ? ' (교사 수정 ' + edited + '명)' : '') + ' · 인성 ' + hasV + '명' + link + (inact ? ' · 오늘 불참 ' + inact + '명 (편성 ' + (s.students.length - inact) + '명)' : '')) : '';
   }
 
   function bindRosterEvents() {
@@ -736,11 +832,24 @@
         else if (field === 'gender') { st.gender = val || null; st.genderInferred = false; }
         else if (field === 'status') st.status = val || '';
         else if (field === 'papsGiven') st.papsGiven = S.toNum(val);
+        else if (field === 'papsOverride') {
+          /* 교사 수정 총점: 비우거나 원래 점수와 같으면 수정 해제 */
+          var ov = S.toNum(val), base = S.toNum(inp.dataset.base);
+          if (ov !== null) ov = Math.max(0, Math.min(100, ov));
+          st.papsOverride = (ov === null || (base !== null && Math.abs(ov - base) < 0.05)) ? null : ov;
+        }
         else if (field.slice(0, 2) === 'v_') { st.virtuesGiven = st.virtuesGiven || {}; st.virtuesGiven[field.slice(2)] = S.toNum(val); if (VK.every(function (k) { return st.virtuesGiven[k] === null || st.virtuesGiven[k] === undefined; })) st.virtuesGiven = null; }
         if (field === 'no' || field === 'name') sortStudents(s.students);
       });
     });
     $('#roster-body').addEventListener('click', function (e) {
+      var rst = e.target.closest('button[data-action=reset-paps]');
+      if (rst) {
+        var rid = rst.closest('tr').dataset.id;
+        St.update(function (s) { var x = s.students.find(function (y) { return y.id === rid; }); if (x) x.papsOverride = null; });
+        toast('원래 PAPS 점수로 되돌렸습니다.');
+        return;
+      }
       var btn = e.target.closest('button[data-action=delete]');
       if (!btn) return;
       var id = btn.closest('tr').dataset.id;
@@ -905,6 +1014,38 @@
     });
     toast('팀 편성 완료 (공정성 ' + res.equity + '점)');
   }
+  /*
+   * 새로운 조합으로 다시 편성 (교사 편성): 팀 평균은 비슷하게 유지하면서, 지금·지난 편성에서 같은 팀이었던
+   * 학생들이 되도록 다시 만나지 않게 새로 짬. 3단계의 현재 설정(팀 수·성별·허용편차·제약)을 그대로 씀.
+   */
+  function remix() {
+    var s = St.get();
+    var teamsNow = sanitizeTeams(s);
+    if (!teamsNow) { toast('먼저 3단계에서 편성을 마치세요.', true); return; }
+    var prep = prepare(s);
+    if (!prep.length) { toast('참여 학생이 없습니다.', true); return; }
+    var lose = [];
+    if (s.result.source === 'draft' && s.result.mode && s.result.mode !== 'auto') lose.push('학생들이 직접 지명한 ' + ({ pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과');
+    if (s.manualEdits) lose.push('수동으로 옮긴 내용');
+    if (lose.length && !confirm('앱이 균형에 맞춰 팀을 새로 짭니다. ' + lose.join(' · ') + '은(는) 새 편성으로 바뀝니다. 계속할까요?\n(상단 "되돌리기"로 되돌릴 수 있습니다)')) return;
+    var opt = Object.assign({}, s.options, { seed: 1 + Math.floor(Math.random() * 1e6), avoid: St.pastTeams(s) });
+    var res = A.buildTeams(prep, opt);
+    var sh = A.sharedPairs(teamsNow, res.teams);
+    var msg = '새로운 조합으로 편성했습니다 — 직전 편성과 같은 팀인 짝은 ' + sh.total + '쌍 중 ' + sh.shared + '쌍입니다.';
+    St.update(function (ss) {
+      St.rememberResult(ss, res.teams);   // 바뀌기 전 결과는 지난 편성으로 남김 (다음에도 덜 겹치게)
+      var wasSplit = !!(ss.result && ss.result.split), isSplit = !!(res.meta && res.meta.separate);
+      if (wasSplit !== isSplit) ss.teamNames = [];   // "남 1팀"·"1팀" 이름 체계가 달라짐
+      ss.options.seed = opt.seed;
+      ss.result = { teams: res.teams, original: res.teams.map(function (t) { return t.slice(); }), seed: res.seed, log: res.log.concat([msg]), builtAt: new Date().toISOString(),
+        meta: res.meta, source: 'auto', mode: 'auto', remix: true, split: (res.meta && res.meta.separate) || null, note: '' };
+      ss.manualEdits = false;
+      ss.draft = null;                    // 편성 화면에 남아 있던 이전 진행 상태는 지움
+      if (ss.teamNames && ss.teamNames.length !== res.teams.length) ss.teamNames = [];
+    });
+    selectedMember = null;
+    toast(msg + ' (공정성 ' + res.equity + '점)');
+  }
   /* 수동 조정 전 편성 직후 상태를 남겨 둠 (복원용) */
   function keepOriginal(s) { if (s.result && !s.result.original) s.result.original = s.result.teams.map(function (t) { return t.slice(); }); }
   function moveStudent(id, toTeam) {
@@ -989,6 +1130,7 @@
       h('span', { class: 'hint teacher-only', text: ' — 편성에서 제외. 2단계 명단에서 "참여"로 바꾸면 원래 팀으로 돌아옵니다.' })));
     var noteWrap = $('#result-note-wrap');
     var sr = sanitizeTeamsReport(s), teams = sr.teams;
+    var remixBtn = $('#btn-remix'); if (remixBtn) remixBtn.hidden = !teams;
     if (!teams) {
       if (noteWrap) noteWrap.hidden = true;
       teamsEl.appendChild(h('div', { class: 'empty', text: s.studentView ? '아직 편성 결과가 없습니다.' : '3단계에서 편성 방식을 고르고 "편성 화면 열기"로 편성을 마치면 결과가 여기에 나타납니다.' }));
@@ -1010,6 +1152,7 @@
         split ? h('span', { class: 'badge', text: '남녀 따로 편성' }) : null,
         s.manualEdits ? h('span', { class: 'badge warn', text: '수동 조정됨' }) : h('span', { class: 'badge ok', text: '시드 ' + s.result.seed }),
         s.result.source === 'draft' ? h('span', { class: 'badge', text: ({ auto: '교사 편성', pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과' }) : null,
+        s.result.remix ? h('span', { class: 'badge', text: '🔀 새로운 조합', title: '지난 편성에서 같은 팀이었던 학생들이 덜 겹치게 다시 짠 편성' }) : null,
         (s.manualEdits && s.result.original && !s.studentView) ? h('button', { class: 'btn ghost small', type: 'button', style: 'margin-left:.4rem', title: '수동 조정을 모두 되돌려 편성 직후(추천안) 상태로', onclick: restoreOriginal }, '편성 직후로 복원') : null),
       split
         ? h('div', { class: 'teacher-only' }, ev.groups.map(function (g) { return h('span', { style: 'margin-right:.8rem' }, g.label + ' 공정성 ', h('b', { text: g.stats.equity }), h('span', { class: 'adv', text: ' (PAPS 범위 ' + fmt(g.stats.Dp, 1) + '점 · 인성 편차 ' + fmt(g.stats.Dc, 2) + ')' })); }))
@@ -1087,7 +1230,7 @@
       });
     }
     teams.forEach(function (rawIds, t) {
-      var ids = rawIds.slice().sort(function (a, b) { return noOf(a) - noOf(b); });
+      var ids = rawIds.slice().sort(function (a, b) { return (isCaptain(s, b, t) - isCaptain(s, a, t)) || (noOf(a) - noOf(b)); });   // 주장이 맨 위, 나머지는 번호순
       var tm = statOf[t] || { size: ids.length, male: 0, female: 0, unknown: 0, meanPaps: NaN, meanVirtues: {} };
       var card = h('div', { class: 'team', dataset: { team: t } },
         h('div', { class: 'team-head', style: 'background:' + teamColor(t) },
@@ -1145,14 +1288,18 @@
     });
   }
 
+  /* 드래프트에서 정한 팀 주장인가 (그 팀에 그대로 있을 때만) */
+  function isCaptain(s, id, team) { return team >= 0 && !!(s.result && s.result.captains && s.result.captains[team] === id); }
   function memberEl(p, s, team) {
     if (!p) return null;
     var pinned = s.options.pinned && s.options.pinned[p.id] !== undefined;
-    var el = h('li', { class: 'member' + (selectedMember === p.id ? ' selected' : ''), dataset: { id: p.id }, draggable: !s.studentView,
-      title: s.studentView ? '' : 'PAPS ' + fmt(p.papsPoints, 1) + '점 (' + p.papsGrade + '등급)' + (p.papsImputed ? ' (대체)' : '') + '\n' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 2); }).join(' · ') + (p.virtueImputed ? '\n(인성 일부 대체)' : '') },
+    var cap = isCaptain(s, p.id, team);
+    var el = h('li', { class: 'member' + (selectedMember === p.id ? ' selected' : '') + (cap ? ' captain' : ''), dataset: { id: p.id }, draggable: !s.studentView,
+      title: (cap ? '팀 주장\n' : '') + (s.studentView ? '' : 'PAPS ' + fmt(p.papsPoints, 1) + '점 (' + p.papsGrade + '등급)' + (p.papsImputed ? ' (대체)' : '') + (p.papsDetail && p.papsDetail.overridden ? ' (교사 수정)' : '') + '\n' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 2); }).join(' · ') + (p.virtueImputed ? '\n(인성 일부 대체)' : '')) },
       h('span', { class: 'no', text: p.no === null || p.no === undefined ? '' : p.no }),
       h('span', { class: 'nm', text: p.name || '(이름 없음)' }),
       p.gender ? h('span', { class: 'g ' + (p.gender === '남' ? 'm' : 'f'), text: p.gender }) : null,
+      cap ? h('span', { class: 'cap', title: '팀 주장', text: '👑 주장' }) : null,
       pinned ? h('span', { class: 'pin', title: '팀 고정', text: '📌' }) : null,
       h('span', { class: 'sc', text: fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return fmt(p.virtues[k], 1); }).join('/') })
     );
@@ -1322,8 +1469,8 @@
       r.readAsText(f, 'utf-8'); e.target.value = '';
     });
     $$('.btn-template').forEach(function (b) { b.addEventListener('click', function () { try { X.exportTemplateXlsx(b.dataset.kind); } catch (e) { toast(e.message, true); } }); });
-    $('#btn-print').addEventListener('click', function () { window.print(); });
-    $('#btn-print2').addEventListener('click', function () { window.print(); });
+    /* 인쇄 버튼(4단계 '인쇄', 5단계 인쇄물 버튼들)은 print.js 가 미리보기를 열어 처리 */
+    var remixBtn = $('#btn-remix'); if (remixBtn) remixBtn.addEventListener('click', remix);
   }
 
   /* 간단/자세히 보기 (브라우저별 설정) */
@@ -1351,6 +1498,7 @@
     sel.value = curLbl && Array.prototype.some.call(sel.options, function (o) { return o.value === curLbl; }) ? curLbl : '';
     sel.title = '저장된 학급으로 전환합니다. 현재 학급은 이름이 있으면 자동으로 저장됩니다.';
     var del = $('#btn-del-class'); if (del) del.disabled = !(curLbl && hasCur);
+    var ord = $('#btn-order-class'); if (ord) ord.disabled = saved.length + (curLbl && !hasCur && s.students.length ? 1 : 0) < 2;   // 학급이 둘 이상일 때만
     $('#btn-undo').disabled = !St.canUndo();
   }
   function bindTopEvents() {
@@ -1374,6 +1522,11 @@
       if (!lbl || lbl === St.get().classLabel) return;
       switchClass(lbl);
     });
+    $('#btn-new-class').addEventListener('click', addNewClass);
+    $('#btn-order-class').addEventListener('click', openOrderDialog);
+    $('#btn-order-close').addEventListener('click', closeOrderDialog);
+    $('#btn-order-sort').addEventListener('click', function () { St.sortSaved(); afterOrderChange(); toast('이름순으로 정렬했습니다.'); });
+    $('#class-order').addEventListener('click', function (e) { if (e.target === e.currentTarget) closeOrderDialog(); });   // 바깥(배경) 클릭으로 닫기
     var delBtn = $('#btn-del-class');
     if (delBtn) delBtn.addEventListener('click', function () {
       var lbl = St.get().classLabel;

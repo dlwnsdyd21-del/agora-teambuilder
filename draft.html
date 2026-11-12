@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0f172a">
   <title>팀 편성 — PAPS + 인성 AI 팀빌딩</title>
   <link rel="icon" type="image/png" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="css/draft.css?v=18">
+  <link rel="stylesheet" href="css/draft.css?v=19">
 </head>
 <body class="draft">
   <header class="dbar">
@@ -60,6 +60,17 @@
             <label>여자 팀 <input type="number" id="d-teamCountF" min="1" max="12" step="1"></label>
           </span>
           <label class="check" id="d-anon-wrap" title="드래프트 중에는 이름·번호 대신 무작위 코드(선수 07)로 보이고, 완료 후 이름을 공개합니다"><input type="checkbox" id="d-anon"> 익명 드래프트</label>
+          <label class="check" id="d-mix-wrap" title="지난 편성에서 같은 팀이었던 학생들이 되도록 다시 만나지 않게 짭니다. 팀 평균은 비슷하게 유지되지만 균형 수치가 조금 낮아질 수 있습니다" hidden><input type="checkbox" id="d-mix"> 🔀 새로운 조합 <span class="hint">지난 편성과 덜 겹치게</span></label>
+        </div>
+        <!-- 팀 주장 지정 (팀별·크레딧 드래프트) -->
+        <div class="captains" id="d-captains-wrap" hidden>
+          <div class="cap-head">
+            <b>👑 팀 주장 지정</b>
+            <span class="hint" id="d-cap-info"></span>
+            <button id="d-cap-clear" class="btn ghost small" type="button">모두 비우기</button>
+          </div>
+          <p class="hint">팀마다 주장을 1명씩 정하면 그 학생이 팀에 먼저 들어가고, 자기 팀 차례에 선수 카드를 고르는 사람이 됩니다. 주장은 익명 드래프트에서도 이름이 보입니다. 비워 둔 팀은 주장 없이 진행합니다.</p>
+          <div class="cap-grid" id="d-captains"></div>
         </div>
         <details class="adv-details" id="d-adv">
           <summary>세부 설정 <span class="hint">팀 이름 · 지명 시간 제한 · 크레딧 체력 비중</span></summary>
@@ -97,10 +108,10 @@
 
   <script src="js/questions.js?v=4"></script>
   <script src="js/paps_table.js?v=4"></script>
-  <script src="js/scoring.js?v=4"></script>
-  <script src="js/algorithm.js?v=6"></script>
-  <script src="js/state.js?v=7"></script>
-  <script src="js/draft_logic.js?v=6"></script>
-  <script src="js/draft_ui.js?v=18"></script>
+  <script src="js/scoring.js?v=5"></script>
+  <script src="js/algorithm.js?v=7"></script>
+  <script src="js/state.js?v=8"></script>
+  <script src="js/draft_logic.js?v=7"></script>
+  <script src="js/draft_ui.js?v=19"></script>
 </body>
 </html>

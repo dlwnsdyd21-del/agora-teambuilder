@@ -68,6 +68,22 @@ button, input { font: inherit; }
 .names label { display: flex; align-items: center; gap: .4rem; font-size: .9rem; color: var(--muted); }
 .names i { width: .9em; height: .9em; border-radius: 50%; display: inline-block; flex: none; }
 .names input { flex: 1; min-width: 0; padding: .35rem .5rem; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--ink); }
+/* 팀 주장 지정 */
+.captains { margin: 0 0 1.1rem; border: 1px solid rgba(251, 191, 36, .4); background: rgba(251, 191, 36, .07); border-radius: 12px; padding: .7rem .9rem .8rem; }
+.captains .cap-head { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.captains .cap-head b { font-size: 1.05rem; }
+.captains .cap-head .btn { margin-left: auto; padding: .25rem .6rem; font-size: .85rem; }
+.captains p.hint { margin: .3rem 0 .6rem; color: var(--muted); font-size: .88rem; line-height: 1.45; }
+.captains .hint { color: var(--muted); font-size: .88rem; }
+.cap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: .5rem; }
+.cap-grid .group-title { grid-column: 1 / -1; font-weight: 800; font-size: .95rem; color: var(--muted); margin-top: .2rem; }
+.cap-grid label { display: flex; align-items: center; gap: .45rem; font-size: .92rem; color: var(--ink); min-width: 0; }
+.cap-grid i { width: .9em; height: .9em; border-radius: 50%; display: inline-block; flex: none; }
+.cap-grid .tn { flex: none; max-width: 6.5em; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cap-grid select { flex: 1; min-width: 0; padding: .38rem .45rem; border-radius: 8px; border: 1px solid var(--line); background: #1e293b; color: var(--ink); font: inherit; font-size: .92rem; }
+.cap-grid select option { background: #1e293b; color: #f1f5f9; }
+.cap-grid label.set select { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(251, 191, 36, .18); }
+.setup-row .hint { font-size: .85rem; opacity: .8; }
 .setup-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .order { display: flex; gap: .4rem; flex-wrap: wrap; min-height: 2rem; align-items: center; }
 .order .chip { padding: .25rem .6rem; border-radius: 999px; font-weight: 700; color: #0b1220; font-size: .9rem; animation: popIn .35s ease-out backwards; }
@@ -79,6 +95,7 @@ button, input { font: inherit; }
 .now { font-size: clamp(1.3rem, 2.6vw, 2.1rem); font-weight: 800; display: flex; align-items: center; gap: .6rem; }
 .now .team-dot { width: 1em; height: 1em; border-radius: 50%; box-shadow: 0 0 0 6px rgba(255, 255, 255, .08); animation: pulse 1.4s infinite; }
 .now .sub { font-size: .95rem; color: var(--muted); font-weight: 500; }
+.now .sub.cap { font-size: clamp(1rem, 1.7vw, 1.4rem); font-weight: 800; color: #0b1220; background: var(--gold); padding: .12em .65em; border-radius: 999px; white-space: nowrap; }
 .timer { font-variant-numeric: tabular-nums; font-size: 1.6rem; font-weight: 800; padding: .2rem .8rem; border-radius: 12px; background: var(--panel2); }
 .timer.warn { color: var(--danger); animation: pulse 1s infinite; }
 .progress { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
@@ -158,6 +175,9 @@ button, input { font: inherit; }
 .member .tg { margin-left: auto; font-size: .9em; color: var(--muted); white-space: nowrap; }
 .member.slot { background: transparent; border: 1px dashed var(--line); color: rgba(255, 255, 255, .28); justify-content: center; font-weight: 400; animation: none; }
 .member.pinned { background: rgba(251, 191, 36, .12); border: 1px solid rgba(251, 191, 36, .35); }
+.member.captain { background: rgba(251, 191, 36, .2); border: 1px solid rgba(251, 191, 36, .7); }
+.board-cap { padding: .3rem .8rem; font-size: .85rem; font-size: clamp(.85rem, 4.4cqw, 1.1rem); color: var(--gold); background: rgba(251, 191, 36, .1); border-bottom: 1px solid rgba(251, 191, 36, .25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board-cap b { color: var(--ink); }
 .member .pin { font-size: .85em; }
 .member.new { animation: popIn .6s cubic-bezier(.2, .9, .3, 1.3); }
 .board-foot { padding: .3rem .8rem .55rem; font-size: .8rem; font-size: clamp(.8rem, 3.9cqw, 1rem); color: var(--muted); display: flex; gap: .3rem .7rem; flex-wrap: wrap; }

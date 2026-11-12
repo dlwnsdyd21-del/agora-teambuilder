@@ -116,7 +116,7 @@
 
   /* ---------- 초기화 ---------- */
   /*
-   * prepared: 점수 계산된 학생 배열, options: {mode, teamCount, genderBalance, seed, fitnessWeight, teamNames, autoTeams}
+   * prepared: 점수 계산된 학생 배열, options: {mode, teamCount, genderBalance, seed, fitnessWeight, teamNames, autoTeams, pinned, captains}
    */
   function initDraft(prepared, options) {
     options = options || {};
@@ -145,14 +145,23 @@
       split: split, teamGender: teamGender, orderG: orderG,
       teamNames: (options.teamNames || []).slice(0, K), picks: [], teams: Array.from({ length: K }, function () { return []; }),
       sequence: [], cursor: 0, status: 'running', seed: options.seed || 1, createdAt: new Date().toISOString(),
-      pinned: {}, prePlaced: []
+      pinned: {}, prePlaced: [], captains: Array.from({ length: K }, function () { return null; })
     };
     while (state.teamNames.length < K) state.teamNames.push(A.teamLabel(state.teamNames.length, split));
-    /* 팀 고정: 미리 배치 (교사 편성은 알고리즘이 처리하므로 제외). 남녀 따로면 성별이 맞는 팀에만 */
     var idSet = {}; prepared.forEach(function (p) { idSet[p.id] = p; });
+    /* 팀 주장: {팀 번호: 학생 id} — 그 팀에 미리 배치되어 지명의 주체가 됨 (한 학생은 한 팀만, 남녀 따로면 성별이 맞는 팀만) */
+    if (state.mode !== 'auto') Object.keys(options.captains || {}).forEach(function (tk) {
+      var t = parseInt(tk, 10), id = options.captains[tk];
+      if (id === null || id === undefined || id === '' || !idSet[id] || isNaN(t) || t < 0 || t >= K) return;
+      if (state.captains[t] !== null || state.pinned[id] !== undefined) return;
+      if (split && gKey(idSet[id].gender) !== teamGender[t]) return;
+      state.captains[t] = id; state.pinned[id] = t; state.prePlaced.push(id); state.teams[t].push(id);
+    });
+    /* 팀 고정: 미리 배치 (교사 편성은 알고리즘이 처리하므로 제외). 남녀 따로면 성별이 맞는 팀에만. 주장으로 정한 학생은 주장 팀이 우선 */
     if (state.mode !== 'auto') Object.keys(options.pinned || {}).forEach(function (id) {
       var t = parseInt(options.pinned[id], 10);
       if (!idSet[id] || isNaN(t) || t < 0 || t >= K) return;
+      if (state.pinned[id] !== undefined) return;
       if (split && gKey(idSet[id].gender) !== teamGender[t]) return;
       state.pinned[id] = t; state.prePlaced.push(id); state.teams[t].push(id);
     });

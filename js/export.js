@@ -63,11 +63,15 @@
     var wb = XLSX.utils.book_new();
 
     /* 1) 팀 명단 (게시용: 점수 없음, 번호순). 첫 줄에 학급·편성일·수업일 칸 */
-    var roster = [titleRow, ['팀', '번호', '이름', '성별']];
+    /* 드래프트에서 지정한 팀 주장 (팀 번호 → 학생 id) */
+    var caps = (session.result && session.result.captains) || [];
+    var isCap = function (t, id) { return !!id && caps[t] === id; };
+    var hasCap = pubTeams.some(function (ids, t) { return ids.some(function (id) { return isCap(t, id); }); });
+    var roster = [titleRow, ['팀', '번호', '이름', '성별'].concat(hasCap ? ['비고'] : [])];
     pubTeams.forEach(function (ids, t) {
       ids.forEach(function (id) {
         var s = byId[id]; if (!s) return;
-        roster.push([teamName(t), s.no === null ? '' : s.no, s.name || '', s.gender || '']);
+        roster.push([teamName(t), s.no === null ? '' : s.no, s.name || '', s.gender || ''].concat(hasCap ? [isCap(t, id) ? '주장' : ''] : []));
       });
     });
     if (inactive.length) { roster.push([]); roster.push(['불참·역할', inactiveText]); }
@@ -79,7 +83,7 @@
     var maxLen = Math.max.apply(null, pubTeams.map(function (t) { return t.length; }).concat([0]));
     var wide = [pubTeams.map(function (_, t) { return teamName(t); })];
     for (var i = 0; i < maxLen; i++) {
-      wide.push(pubTeams.map(function (ids) { var s = byId[ids[i]]; return s ? ((s.no !== null ? s.no + ' ' : '') + (s.name || '')) : ''; }));
+      wide.push(pubTeams.map(function (ids, t) { var s = byId[ids[i]]; return s ? ((s.no !== null ? s.no + ' ' : '') + (s.name || '') + (isCap(t, ids[i]) ? ' (주장)' : '')) : ''; }));
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wide), '팀별 명단');
 
@@ -126,7 +130,7 @@
           var s = byId[id]; if (!s) return;
           var d = s.papsDetail || {};
           var srcLabel = { neis: '나이스 점수', official: '공식 기준표', relative: '학급 내 상대', given: '총점 입력', grade: '등급 입력' }[d.source] || '';
-          sc.push([teamName(t), s.no === null ? '' : s.no, s.name || '', s.gender || '', r2(s.papsPoints), s.papsGrade || '', srcLabel + (d.scaled ? '(환산)' : '')]
+          sc.push([teamName(t), s.no === null ? '' : s.no, s.name || '', s.gender || '', r2(s.papsPoints), s.papsGrade || '', srcLabel + (d.scaled ? '(환산)' : '') + (d.overridden ? ' → 교사 수정' + (typeof d.computedTotal === 'number' ? ' (원래 ' + r2(d.computedTotal) + '점)' : '') : '')]
             .concat(itemKeys.map(function (k) { return d.items && d.items[k] ? d.items[k].points : ''; }))
             .concat(VK.map(function (k) { return r2(s.virtues[k]); }))
             .concat([s.papsImputed ? 'Y' : '', s.virtueImputed ? 'Y' : '', s.source && s.source.paps ? 'Y' : '', s.source && s.source.survey ? 'Y' : '']));

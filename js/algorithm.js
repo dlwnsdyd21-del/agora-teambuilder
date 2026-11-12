@@ -200,8 +200,55 @@
     return c / 2;
   }
 
+  /* ---------- 새로운 조합: 이전 편성에서 같은 팀이었던 짝 ---------- */
+  /* 새 조합을 위해 허용하는 인성 편차 지수(Dc) 여유. 샘플 30명·6팀 기준: 시드만 바꾸면 60쌍 중 평균 12쌍이 다시 같은 팀,
+   * 여유 0.2 → 약 6쌍, 0.3 → 약 4쌍, 0.6 → 약 2쌍(대신 덕목 팀 평균 차이가 두 배 이상). PAPS 허용편차는 항상 지킴 */
+  var MIX_SLACK = 0.3;
+  /* avoid: [[[ids]]] 이전 편성들(최근 것이 앞). 반환: 짝 가중치 행렬(최근 1, 그 전 0.5, …) 또는 null */
+  function pairWeights(students, avoid) {
+    var n = students.length, idToIdx = {}, any = false;
+    students.forEach(function (s) { idToIdx[String(s.id)] = s.idx; });
+    var W = Array.from({ length: n }, function () { return new Float64Array(n); });
+    (avoid || []).forEach(function (teams, hIdx) {
+      var w = Math.pow(0.5, hIdx);
+      (teams || []).forEach(function (ids) {
+        var idx = (ids || []).map(function (id) { return idToIdx[String(id)]; }).filter(function (i) { return i !== undefined; });
+        for (var a = 0; a < idx.length; a++) for (var b = a + 1; b < idx.length; b++) {
+          if (idx[a] === idx[b]) continue;
+          W[idx[a]][idx[b]] += w; W[idx[b]][idx[a]] += w; any = true;
+        }
+      });
+    });
+    return any ? W : null;
+  }
+  /* 같은 팀 짝 가운데 예전에도 같은 팀이었던 짝의 비율(가중) */
+  function repeatScore(st, W) {
+    var sum = 0, pairs = 0;
+    for (var t = 0; t < st.K; t++) {
+      var ms = st.members[t];
+      pairs += ms.length * (ms.length - 1) / 2;
+      for (var a = 0; a < ms.length; a++) { var row = W[ms[a]]; for (var b = a + 1; b < ms.length; b++) sum += row[ms[b]]; }
+    }
+    return pairs ? sum / pairs : 0;
+  }
+  /* 두 편성에서 모두 같은 팀인 짝의 수. 반환 {shared, total(teamsB 의 같은 팀 짝 수)} */
+  function sharedPairs(teamsA, teamsB) {
+    var teamOf = {};
+    (teamsA || []).forEach(function (ids, t) { (ids || []).forEach(function (id) { teamOf[String(id)] = t; }); });
+    var shared = 0, total = 0;
+    (teamsB || []).forEach(function (ids) {
+      for (var a = 0; a < ids.length; a++) for (var b = a + 1; b < ids.length; b++) {
+        total++;
+        var ta = teamOf[String(ids[a])], tb = teamOf[String(ids[b])];
+        if (ta !== undefined && ta === tb) shared++;
+      }
+    });
+    return { shared: shared, total: total };
+  }
+
   /* ---------- 1차: 서펜타인 드래프트 ---------- */
-  function draft(students, K, C, quotas, sizes, rng, genderBalance) {
+  /* noise: 새로운 조합용 — PAPS 정렬 기준에 ±noise 점의 무작위 흔들림을 줘 출발 배치를 다양하게 */
+  function draft(students, K, C, quotas, sizes, rng, genderBalance, noise) {
     var st = new State(students, K);
     var room = {};  // room[g][t] 남은 성별 쿼터
     GENDERS.forEach(function (g) { room[g] = quotas[g].slice(); });
@@ -238,9 +285,9 @@
       }
       if (!list.length) return;
       /* PAPS 내림차순, 동점은 시드 랜덤 */
-      var jitter = {};
-      list.forEach(function (i) { jitter[i] = rng(); });
-      list.sort(function (a, b) { return (students[b].p - students[a].p) || (jitter[a] - jitter[b]); });
+      var jitter = {}, key = {};
+      list.forEach(function (i) { jitter[i] = rng(); key[i] = students[i].p + (noise ? (rng() * 2 - 1) * noise : 0); });
+      list.sort(function (a, b) { return (key[b] - key[a]) || (jitter[a] - jitter[b]); });
       var order = [];
       for (var t = 0; t < K; t++) order.push((t + offset) % K);
       var pos = 0, dir = 1;
@@ -341,7 +388,13 @@
     var tau = options.papsTolerance, maxEvals = options.maxEvals || 20000;
     var gb = options.genderBalance;
     var n = students.length;
-    var cur = spreads(st, studentSd), J = objective(cur, tau);
+    /* mix = {W, dcCap}: 새로운 조합 — PAPS 허용편차와 인성 편차 상한(dcCap) 안에서, 예전에 같은 팀이었던 짝을 최소화 */
+    var mix = options.mix || null;
+    function cost(sp) {
+      if (!mix) return objective(sp, tau);
+      return 1000 * Math.max(0, sp.Dp - tau) + 100 * Math.max(0, sp.Dc - mix.dcCap) + repeatScore(st, mix.W) + 0.1 * sp.Dc + 0.01 * sp.Dp;
+    }
+    var cur = spreads(st, studentSd), J = cost(cur);
     var evals = 0, improved = true, rounds = 0;
 
     function swapOk(i, j) {
@@ -372,7 +425,7 @@
         var a = pairs[p][0], b = pairs[p][1];
         if (!swapOk(a, b)) continue;
         st.swap(a, b); evals++;
-        var sp = spreads(st, studentSd), Jn = objective(sp, tau);
+        var sp = spreads(st, studentSd), Jn = cost(sp);
         if (Jn < J - 1e-12) { J = Jn; cur = sp; improved = true; }
         else st.swap(a, b);
       }
@@ -384,7 +437,7 @@
           var from = st.team[s];
           if (!moveOk(s, t)) continue;
           st.move(s, t); evals++;
-          var sp2 = spreads(st, studentSd), J2 = objective(sp2, tau);
+          var sp2 = spreads(st, studentSd), J2 = cost(sp2);
           if (J2 < J - 1e-12) { J = J2; cur = sp2; improved = true; }
           else st.move(s, from);
         }
@@ -472,6 +525,35 @@
       var score = ls.J + viol * 1e6;
       if (!best || score < best.score) best = { score: score, st: st, ls: ls, rlog: rlog };
     }
+    /*
+     * 새로운 조합(options.avoid = 이전 편성들): 위에서 구한 가장 균형 잡힌 편성을 기준으로,
+     * PAPS 범위는 허용편차 안(기준 편성이 못 지켰으면 그 수준), 인성 편차는 기준 + MIX_SLACK 안에서
+     * 예전에 같은 팀이었던 짝이 가장 적은 편성을 다시 찾는다.
+     */
+    var mixMeta = null;
+    var W = N > K ? pairWeights(students, options.avoid) : null;
+    if (W) {
+      var base = best.ls.spreads;
+      var mix = { W: W, dcCap: base.Dc + (typeof options.mixSlack === 'number' ? options.mixSlack : MIX_SLACK) };
+      var tauMix = Math.max(Number(options.papsTolerance) || 0, base.Dp);
+      var noise = 0.75 * (studentSd.PAPS || 0);
+      var baseRepeat = repeatScore(best.st, W), bestMix = null;
+      for (var r2 = 0; r2 < restarts; r2++) {
+        var rng2 = mulberry32((options.seed | 0) * 15485863 + r2 * 32452843 + 101);
+        var sizes2 = teamSizes(N, K, rng2);
+        var quotas2 = genderBalance ? genderQuotas(sizes2, counts, rng2)
+          : { 남: new Array(K).fill(0), 여: new Array(K).fill(0), 미상: new Array(K).fill(0) };
+        var st2 = draft(students, K, C, quotas2, sizes2, rng2, genderBalance, noise);
+        var rlog2 = [];
+        repairTogether(st2, students, C, genderBalance, rlog2);
+        repairApart(st2, students, C, genderBalance, rlog2);
+        var ls2 = localSearch(st2, students, C, { papsTolerance: tauMix, genderBalance: genderBalance, maxEvals: options.maxEvals, mix: mix }, studentSd, rng2, bounds);
+        var score2 = ls2.J + totalApartViolations(st2, C) * 1e6;
+        if (!bestMix || score2 < bestMix.score) bestMix = { score: score2, st: st2, ls: ls2, rlog: rlog2 };
+      }
+      mixMeta = { repeat: repeatScore(bestMix.st, W), baseRepeat: baseRepeat, baseDc: base.Dc, baseDp: base.Dp, dcCap: mix.dcCap };
+      best = bestMix;
+    }
     log = log.concat(best.rlog);
     var stats = computeStats(best.st, students, studentSd);
     var teams = best.st.members.map(function (ms) {
@@ -479,7 +561,7 @@
     });
     return {
       teams: teams, stats: stats, equity: stats.equity, seed: options.seed, log: log,
-      meta: { evals: best.ls.evals, rounds: best.ls.rounds, J: best.ls.J, restarts: restarts, genderBalance: genderBalance }
+      meta: { evals: best.ls.evals, rounds: best.ls.rounds, J: best.ls.J, restarts: restarts, genderBalance: genderBalance, mix: mixMeta }
     };
   }
 
@@ -535,7 +617,7 @@
     var ev = evaluateGroups(inputStudents || [], teams, split);
     return {
       teams: teams, stats: null, groups: ev.groups, equity: ev.equity, seed: opts.seed, log: log,
-      meta: { separate: split, genderBalance: false, restarts: opts.restarts }
+      meta: { separate: split, genderBalance: false, restarts: opts.restarts, mix: (rm.meta && rm.meta.mix) || (rf.meta && rf.meta.mix) || null }
     };
   }
   /*
@@ -580,6 +662,7 @@
 
   var api = {
     buildTeams: buildTeams, buildTeamsSeparate: buildTeamsSeparate, evaluateTeams: evaluateTeams, evaluateGroups: evaluateGroups, teamLabel: teamLabel,
+    sharedPairs: sharedPairs,
     DEFAULTS: DEFAULTS, mulberry32: mulberry32,
     _internal: { teamSizes: teamSizes, genderQuotas: genderQuotas }
   };

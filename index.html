@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1f6feb">
   <title>PAPS + 인성 AI 팀빌딩</title>
   <link rel="icon" type="image/png" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="css/style.css?v=16">
+  <link rel="stylesheet" href="css/style.css?v=18">
 </head>
 <body>
   <header class="topbar">
@@ -20,12 +20,14 @@
     <div class="topbar-actions teacher-only">
       <span class="inline-group class-group"><label class="inline" title="학급 이름. &quot;1-3&quot;처럼 적으면 여러 반이 든 파일에서 이 반만 자동으로 들어옵니다">학급 <input id="class-label" type="text" placeholder="예: 1-3" size="6"></label>
       <select id="saved-select" title="저장된 학급으로 전환 (현재 학급은 자동 저장)"><option value="">학급 전환…</option></select>
+      <button id="btn-order-class" class="btn ghost" type="button" title="학급 전환 목록의 순서를 바꿉니다">↕ 순서</button>
+      <button id="btn-new-class" class="btn" type="button" title="현재 학급은 저장해 두고, 비어 있는 새 반을 만들어 엽니다">＋ 새 반</button>
       <button id="btn-save-class" class="btn" title="현재 자료·설정·결과를 학급 이름으로 이 브라우저에 보관">학급 저장</button>
       <button id="btn-del-class" class="btn ghost adv" title="현재 학급의 저장본 삭제">저장본 삭제</button></span>
       <button id="btn-undo" class="btn ghost">되돌리기</button>
       <button id="btn-reset" class="btn ghost danger">새로 시작</button>
     </div>
-    <label class="switch teacher-only" title="세부 설정·차트·고급 내보내기까지 모두 보여줍니다">
+    <label class="switch teacher-only" title="세부 설정·차트·엑셀 내보내기까지 모두 보여줍니다">
       <input type="checkbox" id="detail-toggle"><span>자세히 보기</span>
     </label>
     <label class="switch" title="개인 점수를 숨기고 팀 구성과 팀 단위 균형만 보여줍니다">
@@ -38,7 +40,7 @@
     <a href="#sec-roster"><b>2</b> 명단 확인</a>
     <a href="#sec-settings"><b>3</b> 편성하기</a>
     <a href="#sec-result"><b>4</b> 결과 확인</a>
-    <a href="#sec-export"><b>5</b> 내보내기</a>
+    <a href="#sec-export"><b>5</b> 인쇄하기</a>
   </nav>
 
   <main>
@@ -90,7 +92,7 @@
           <li><b>PAPS 계산값</b>: 번호·이름과 "PAPS 총점"(100점 만점) 또는 "PAPS 등급"(1~5) 한 열.</li>
           <li><b>인성 32문항 (구글폼 응답 시트)</b>: 헤더가 "1. 문항…"처럼 번호로 시작하거나 문항 원문이면 자동 인식. 응답이 "④ 그렇다" 같은 글자여도 1~5점으로 읽습니다. <b>학번</b> 열("10130 홍길동" = 1학년 1반 30번)에서 번호·이름·학년을 읽고, 학교·타임스탬프 열과 B1~B5 보조문항은 제외합니다. 성실(1–8)·협동(9–16)·정의(17–24)·배려(25–32) 평균을 씁니다.</li>
           <li><b>인성 4덕목</b>: 성실·협동·정의·배려 열(1~5점).</li>
-          <li>성별 열(남/여)이 있으면 함께 읽습니다. 빈 양식은 5번 내보내기에서 받을 수 있습니다.</li>
+          <li>성별 열(남/여)이 있으면 함께 읽습니다. 빈 양식은 5단계(자세히 보기)에서 받을 수 있습니다.</li>
         </ul>
       </details>
     </section>
@@ -104,8 +106,8 @@
           <button id="btn-add-row" class="btn ghost" type="button">+ 학생 추가</button>
         </div>
       </div>
-      <p class="desc simple-only">성별이 비어 있으면 채워 주세요. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다. 오늘 결석·활동 제한·기록/심판인 학생은 <b>참여</b> 칸을 바꾸면 편성에서 빠지고, 다시 "참여"로 바꾸면 원래 팀으로 돌아옵니다.</p>
-      <p class="desc adv">PAPS 점수는 공식 기준표(학교건강검사규칙 별표 4·5)로 종목당 0~20점을 매겨 5영역 합계 <b>100점 만점</b>으로 계산합니다(성별·학년 필요). 성별이 없으면 학급 내 상대점수(<span class="badge warn">상대</span>)로, 자료가 없으면 학급 평균(<span class="badge warn">대체</span>)으로 채워 편성에 포함합니다. 원기록이 없는 학생은 PAPS 총점/등급을, 32문항이 없는 학생은 4덕목 점수를 직접 입력할 수 있습니다. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다.</p>
+      <p class="desc simple-only">성별이 비어 있으면 채워 주세요. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다. PAPS 기록과 실제 수행 능력의 차이가 큰 학생은 <b>PAPS 총점</b> 칸의 숫자를 직접 고칠 수 있습니다(<span class="badge warn">교사 수정</span> 표시, ↺로 원래 점수 복원). 오늘 결석·활동 제한·기록/심판인 학생은 <b>참여</b> 칸을 바꾸면 편성에서 빠지고, 다시 "참여"로 바꾸면 원래 팀으로 돌아옵니다.</p>
+      <p class="desc adv">PAPS 점수는 공식 기준표(학교건강검사규칙 별표 4·5)로 종목당 0~20점을 매겨 5영역 합계 <b>100점 만점</b>으로 계산합니다(성별·학년 필요). 성별이 없으면 학급 내 상대점수(<span class="badge warn">상대</span>)로, 자료가 없으면 학급 평균(<span class="badge warn">대체</span>)으로 채워 편성에 포함합니다. 원기록이 없는 학생은 PAPS 총점/등급을, 32문항이 없는 학생은 4덕목 점수를 직접 입력할 수 있습니다. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다. 기록과 실제 수행 능력의 차이가 큰 학생은 <b>PAPS 총점 칸의 숫자를 직접 고치면</b> 그 점수(<span class="badge warn">교사 수정</span>)로 편성하며, 칸을 비우거나 ↺를 누르면 원래 점수로 돌아갑니다. 파일을 다시 올려도 수정한 점수는 유지됩니다.</p>
       <div class="table-wrap">
         <table class="roster" id="roster-table">
           <thead>
@@ -178,8 +180,9 @@
     <section id="sec-result" class="card">
       <div class="sec-head">
         <h2>4. 편성 결과 <span id="result-class" class="hint"></span></h2>
-        <div class="row teacher-only no-print">
-          <button id="btn-print" class="btn ghost" type="button">인쇄</button>
+        <div class="row wrap teacher-only no-print">
+          <button id="btn-remix" class="btn" type="button" hidden title="팀 평균(PAPS·인성)은 비슷하게 유지하면서, 지금과 같은 팀이었던 학생들이 되도록 다시 만나지 않게 앱이 팀을 새로 짭니다. 균형 수치는 조금 낮아질 수 있고, 상단 '되돌리기'로 되돌릴 수 있습니다.">🔀 새로운 조합으로 다시 편성</button>
+          <button id="btn-print" class="btn ghost" type="button" title="게시용 팀 명단 인쇄 미리보기를 엽니다">🖨 인쇄</button>
         </div>
       </div>
       <div id="result-summary"></div>
@@ -197,19 +200,28 @@
       <div id="charts" class="charts adv"></div>
     </section>
 
-    <!-- 5. 내보내기 -->
+    <!-- 5. 인쇄 · 내보내기 -->
     <section id="sec-export" class="card teacher-only">
-      <h2>5. 내보내기</h2>
+      <h2>5. 인쇄하기</h2>
       <div class="export-grid">
-        <div>
-          <h3>팀 명단</h3>
+        <div class="print-box">
+          <h3>팀 명단 인쇄</h3>
           <div class="row wrap">
-            <button id="btn-xlsx" class="btn primary" type="button">팀 명단 엑셀 (게시용)</button>
-            <button id="btn-xlsx-teacher" class="btn adv" type="button">교사용 엑셀 (개인점수 포함)</button>
-            <button id="btn-print2" class="btn ghost" type="button">인쇄</button>
-            <button id="btn-xlsx-all" class="btn ghost adv" type="button" title="학급 저장된 모든 반의 게시용 명단을 반마다 시트 하나로">저장된 모든 학급 명단 (한 파일)</button>
+            <button id="btn-print-roster" class="btn primary big" type="button" title="교실에 붙이는 팀 명단 — 개인 점수 없음, 한 장에 맞게 글자 크기 자동 조절">🖨 팀 명단 인쇄 (게시용)</button>
+            <button id="btn-print-teams" class="btn" type="button" title="팀마다 한 장씩 — 큰 글씨 명단과 역할·메모 칸 (팀에 나눠 줄 때)">팀별 한 장씩</button>
+            <button id="btn-print-teacher" class="btn" type="button" title="개인 점수와 팀 균형표가 들어간 교사 보관용 — 학생에게 공개하지 마세요">교사용 (개인 점수 포함)</button>
+            <button id="btn-print-all" class="btn ghost" type="button" title="학급 저장된 모든 반의 게시용 명단을 반마다 한 장씩 이어서 인쇄">저장된 모든 학급 명단</button>
           </div>
-          <p class="hint adv">게시용에는 개인 점수가 들어가지 않습니다(학급·편성일·수업일 칸 포함). 교사용 파일은 학생에게 공개하지 마세요.</p>
+          <p class="hint">버튼을 누르면 <b>인쇄 미리보기</b>가 열립니다. 종이 한 장에 맞게 글자 크기가 자동으로 맞춰지고, 용지 방향·흑백·제목을 고른 뒤 바로 인쇄합니다. 게시용에는 개인 점수가 들어가지 않습니다. PDF로 보관하려면 인쇄 창의 대상에서 "PDF로 저장"을 고르세요.</p>
+        </div>
+        <div class="adv">
+          <h3>엑셀 파일로 받기</h3>
+          <div class="row wrap">
+            <button id="btn-xlsx" class="btn" type="button">팀 명단 엑셀 (게시용)</button>
+            <button id="btn-xlsx-teacher" class="btn" type="button">교사용 엑셀 (개인점수 포함)</button>
+            <button id="btn-xlsx-all" class="btn ghost" type="button" title="학급 저장된 모든 반의 게시용 명단을 반마다 시트 하나로">저장된 모든 학급 명단 (한 파일)</button>
+          </div>
+          <p class="hint">명단을 다른 문서에 붙여 쓰거나 가공할 때만 쓰세요. 교사용 파일은 학생에게 공개하지 마세요.</p>
         </div>
         <div class="adv">
           <h3>세션 저장/불러오기</h3>
@@ -235,19 +247,62 @@
     <p>인성 척도: 박정준·오승현(2015) 중학생 스포츠 인성 척도를 프로젝트 아고라가 수정한 32문항(성실·협동·정의·배려). PAPS와 인성은 합산하지 않으며 개인 점수는 공개하지 않습니다. 자료는 이 브라우저에만 저장됩니다.</p>
   </footer>
 
+  <!-- 학급 목록 순서 바꾸기 -->
+  <dialog id="class-order" class="dialog" aria-labelledby="class-order-title">
+    <h3 id="class-order-title">학급 목록 순서</h3>
+    <p class="hint">▲▼를 누르거나 줄을 끌어서 순서를 바꾸세요. 상단 <b>학급 전환</b> 목록과 "저장된 모든 학급 명단" 엑셀의 시트 순서가 함께 바뀝니다.</p>
+    <ol id="class-order-list" class="order-list"></ol>
+    <div class="row wrap dialog-actions">
+      <button id="btn-order-sort" class="btn" type="button" title="1-1, 1-2, … 1-10 처럼 이름(숫자) 순서로 정렬">이름순 정렬</button>
+      <button id="btn-order-close" class="btn primary" type="button">닫기</button>
+    </div>
+  </dialog>
+
+  <!-- 인쇄 미리보기 (print.js) — 열려 있는 동안 인쇄하면 아래 종이(.sheet)만 찍힙니다 -->
+  <div id="print-view" class="print-view" hidden>
+    <div class="pv-bar">
+      <b class="pv-name">🖨 인쇄 미리보기</b>
+      <label>인쇄물
+        <select id="pv-kind">
+          <option value="roster">팀 명단 (게시용)</option>
+          <option value="teams">팀별 한 장씩</option>
+          <option value="teacher">교사용 (개인 점수 포함)</option>
+          <option value="all">저장된 모든 학급 명단</option>
+        </select>
+      </label>
+      <label>용지
+        <select id="pv-orient">
+          <option value="portrait">A4 세로</option>
+          <option value="landscape">A4 가로</option>
+        </select>
+      </label>
+      <label class="check" title="이름 옆에 남/여를 표시합니다"><input type="checkbox" id="pv-gender"> 성별 표시</label>
+      <label class="check" title="색을 빼고 선과 글자만 인쇄합니다 (잉크 절약 · 흑백 프린터)"><input type="checkbox" id="pv-mono"> 흑백</label>
+      <label id="pv-title-wrap" class="grow">제목 <input type="text" id="pv-title" maxlength="40"></label>
+      <label id="pv-sub-wrap" class="grow">한 줄 메모 <input type="text" id="pv-sub" maxlength="60" placeholder="예: 11월 14일 3교시 · 배구 리그"></label>
+      <span class="pv-actions">
+        <span id="pv-info" class="pv-info"></span>
+        <button id="pv-print" class="btn primary big" type="button">🖨 인쇄</button>
+        <button id="pv-close" class="btn" type="button">닫기</button>
+      </span>
+    </div>
+    <div class="pv-scroll"><div id="pv-pages" class="pv-pages"></div></div>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="vendor/xlsx.full.min.js"></script>
   <script>if (!window.XLSX) { document.write('<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"><\/script>'); }</script>
   <script src="js/questions.js?v=3"></script>
   <script src="js/paps_table.js?v=3"></script>
-  <script src="js/scoring.js?v=3"></script>
-  <script src="js/algorithm.js?v=6"></script>
+  <script src="js/scoring.js?v=5"></script>
+  <script src="js/algorithm.js?v=7"></script>
   <script src="js/parse.js?v=5"></script>
-  <script src="js/state.js?v=7"></script>
-  <script src="js/export.js?v=7"></script>
-  <script src="js/ui.js?v=19"></script>
-  <script src="js/wizard.js?v=1"></script>
+  <script src="js/state.js?v=8"></script>
+  <script src="js/export.js?v=8"></script>
+  <script src="js/ui.js?v=21"></script>
+  <script src="js/print.js?v=1"></script>
+  <script src="js/wizard.js?v=2"></script>
   <script src="js/app.js?v=4"></script>
 </body>
 </html>

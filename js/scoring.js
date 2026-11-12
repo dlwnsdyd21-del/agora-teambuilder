@@ -198,7 +198,7 @@
   var GRADE_REP_POINTS = { 1: 90, 2: 70, 3: 50, 4: 30, 5: 10 };
 
   /*
-   * students: [{id, gender, grade, papsRaw|null, papsGiven|null}]
+   * students: [{id, gender, grade, papsRaw|null, papsGiven|null, papsOverride|null(교사 수정 총점)}]
    * options: {includeBmi, schoolLevel, defaultGrade, papsGivenType:'score'|'grade'}
    * 반환 { byId: {id: 총점|null}, detail: {id: {...}} }
    */
@@ -264,6 +264,9 @@
           d.areas = r.areas; d.items = r.items; d.nAreas = r.nAreas; d.scaled = r.scaled; d.missing = r.missing; d.total = r.total;
         }
       }
+      /* 교사 수정 점수: 기록과 실제 수행 능력의 차이가 클 때 총점을 직접 고침 (원래 점수는 computedTotal 에 남김) */
+      var ov = toNum(s.papsOverride);
+      if (ov !== null) { d.computedTotal = d.total; d.total = Math.max(0, Math.min(100, ov)); d.overridden = true; }
       d.grade = T.gradeFromTotal(d.total);
       byId[s.id] = d.total;
       detail[s.id] = d;

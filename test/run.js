@@ -642,5 +642,134 @@ test('남녀 따로 드래프트: pick·credit 모두 같은 성별 팀만 지�
   assert.throws(() => D.initDraft(prep3, { mode: 'pick', split: { 남: 3, 여: 3 } }), /성별 미상/);
 });
 
+test('팀 주장: 팀에 미리 배치·지명 대상 제외, 한 학생은 한 팀만, 고정보다 우선, 교사 편성에는 적용 안 함', () => {
+  for (const mode of ['pick', 'credit']) {
+    const captains = { 0: 'S3', 1: 'S8', 2: 'S3', 4: 'S12', 9: 'S20', 5: 'S999' };   // S3 중복·없는 팀·없는 학생은 무시
+    const st = D.initDraft(base, { mode, teamCount: 6, genderBalance: true, seed: 4, captains, pinned: { S8: 3, S1: 0 }, anonymous: true });
+    assert.deepStrictEqual(st.captains, ['S3', 'S8', null, null, 'S12', null], mode + ' 주장 목록');
+    assert.deepStrictEqual(st.teams[0].slice().sort(), ['S1', 'S3']);
+    assert.deepStrictEqual(st.teams[1], ['S8'], '주장으로 정한 학생은 다른 팀 고정을 무시');
+    assert.strictEqual(st.teams[3].length, 0);
+    assert.strictEqual(st.sequence.length, base.length - 4, mode + ' 지명 횟수');
+    let guard = 0;
+    while (!D.isDone(st) && guard++ < 100) {
+      const c = D.candidates(st, base);
+      assert.ok(!['S3', 'S8', 'S12', 'S1'].some(id => c.ids.includes(id)), '주장은 후보 아님');
+      assert.ok(D.pick(st, D.autoPick(st, base), base).ok);
+    }
+    assert.ok(D.isDone(st));
+    assert.strictEqual(new Set(st.teams.flat()).size, base.length, mode + ' 전원 배치');
+    const sizes = st.teams.map(t => t.length);
+    assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, mode + ' 인원 ' + sizes);
+    assert.ok(st.teams[0].includes('S3') && st.teams[1].includes('S8') && st.teams[4].includes('S12'));
+    while (D.undo(st)) {}
+    assert.deepStrictEqual(st.teams[4], ['S12'], '되돌리기는 주장을 빼지 않음');
+  }
+  // 팀마다 주장을 모두 지정
+  const all = { 0: 'S1', 1: 'S2', 2: 'S3', 3: 'S4', 4: 'S5', 5: 'S6' };
+  const st2 = D.initDraft(base, { mode: 'pick', teamCount: 6, genderBalance: true, seed: 2, captains: all });
+  st2.teams.forEach((t, i) => assert.deepStrictEqual(t, [all[i]]));
+  while (!D.isDone(st2)) D.pick(st2, D.autoPick(st2, base), base);
+  assert.strictEqual(st2.teams.flat().length, base.length);
+  // 남녀 따로: 성별이 맞지 않는 주장은 무시 (S1 남 · S2 여)
+  const st3 = D.initDraft(base, { mode: 'pick', split: { 남: 2, 여: 2 }, seed: 3, captains: { 0: 'S2', 1: 'S1', 2: 'S4', 3: 'S5' } });
+  assert.deepStrictEqual(st3.captains, [null, 'S1', 'S4', null]);
+  // 교사 편성(auto)은 주장을 쓰지 않음
+  const res = A.buildTeams(base, { teamCount: 6, genderBalance: true, seed: 1 });
+  const st4 = D.initDraft(base, { mode: 'auto', teamCount: 6, autoTeams: res.teams, captains: all });
+  assert.ok(st4.captains.every(c => c === null) && st4.prePlaced.length === 0);
+});
+
+console.log('\n[새 기능]');
+test('새로운 조합(avoid): 지난 편성과 같은 팀인 짝이 줄고, 인원·성별 균형과 PAPS 허용편차는 유지, 재현 가능', () => {
+  const prep = S.prepareStudents(makeStudents(30, 7), { schoolLevel: '중', defaultGrade: 1 });
+  const opt = { teamCount: 6, genderBalance: true, papsTolerance: 3 };
+  const first = A.buildTeams(prep, Object.assign({ seed: 1 }, opt));
+  assert.strictEqual(first.meta.mix, null, '지난 편성이 없으면 평소와 같음');
+  assert.deepStrictEqual(A.buildTeams(prep, Object.assign({ seed: 1, avoid: [] }, opt)).teams, first.teams);
+  const same = A.sharedPairs(first.teams, first.teams);
+  assert.strictEqual(same.shared, same.total); assert.strictEqual(same.total, 60);
+  const hist = [first.teams];
+  for (let i = 0; i < 3; i++) {
+    const res = A.buildTeams(prep, Object.assign({ seed: 50 + i, avoid: hist.slice() }, opt));
+    assert.strictEqual(new Set(res.teams.flat()).size, 30, '전원 배치');
+    const sizes = res.teams.map(t => t.length);
+    assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, '인원 ' + sizes);
+    res.stats.teams.forEach(tm => assert.ok(Math.abs(tm.male - tm.female) <= 1, '성별 균형'));
+    assert.ok(res.stats.Dp <= Math.max(3, first.stats.Dp) + 1e-9, 'PAPS 범위 ' + res.stats.Dp);
+    assert.ok(res.stats.Dc <= res.meta.mix.dcCap + 1e-9, '인성 편차는 기준 + 여유 안');
+    const sp = A.sharedPairs(hist[0], res.teams);
+    assert.ok(sp.shared <= 6, '직전 편성과 같은 팀인 짝 ' + sp.shared + '/' + sp.total);
+    assert.ok(res.equity >= first.equity - 10, '공정성 ' + res.equity + ' (기준 ' + first.equity + ')');
+    assert.deepStrictEqual(A.buildTeams(prep, Object.assign({ seed: 50 + i, avoid: hist.slice() }, opt)).teams, res.teams, '같은 시드·같은 이력이면 같은 결과');
+    hist.unshift(res.teams);
+  }
+  // 제약(고정·떨어뜨리기)은 새 조합에서도 지킴
+  const con = A.buildTeams(prep, Object.assign({ seed: 9, avoid: [first.teams], pinned: { S1: 2 }, apart: [['S3', 'S4']] }, opt));
+  assert.ok(con.teams[2].includes('S1'));
+  assert.ok(!con.teams.some(t => t.includes('S3') && t.includes('S4')));
+  // 남녀 따로 편성에도 적용
+  const sepOpt = { genderSeparate: true, teamCountM: 3, teamCountF: 3, papsTolerance: 3 };
+  const sep1 = A.buildTeams(prep, Object.assign({ seed: 1 }, sepOpt));
+  const sep2 = A.buildTeams(prep, Object.assign({ seed: 2, avoid: [sep1.teams] }, sepOpt));
+  const g = id => prep.find(p => p.id === id).gender;
+  sep2.teams.forEach((t, i) => assert.ok(t.every(id => g(id) === (i < 3 ? '남' : '여'))));
+  const rnd = A.sharedPairs(sep1.teams, A.buildTeams(prep, Object.assign({ seed: 2 }, sepOpt)).teams).shared;
+  assert.ok(A.sharedPairs(sep1.teams, sep2.teams).shared <= rnd, '남녀 따로도 덜 겹침');
+});
+
+test('PAPS 교사 수정(papsOverride): 총점·등급이 바뀌고 원래 점수는 남음, 0~100 범위, 해제하면 복원', () => {
+  const raw = makeStudents(10, 3);
+  const o = { schoolLevel: '중', defaultGrade: 1 };
+  const before = S.prepareStudents(raw, o);
+  const edited = raw.map((s, i) => i === 0 ? Object.assign({}, s, { papsOverride: 95 }) : i === 1 ? Object.assign({}, s, { papsOverride: 250 }) : i === 2 ? Object.assign({}, s, { papsOverride: '' }) : s);
+  const after = S.prepareStudents(edited, o);
+  assert.strictEqual(after[0].papsPoints, 95); assert.strictEqual(after[0].papsGrade, 1);
+  assert.ok(after[0].papsDetail.overridden); approx(after[0].papsDetail.computedTotal, before[0].papsPoints);
+  assert.strictEqual(after[1].papsPoints, 100, '100점 초과는 100점으로');
+  assert.ok(!after[2].papsDetail.overridden); approx(after[2].papsPoints, before[2].papsPoints);
+  for (let i = 3; i < 10; i++) approx(after[i].papsPoints, before[i].papsPoints);
+  // 자료가 없는 학생도 수정 점수로 채울 수 있음 (학급 평균 대체가 아님)
+  const none = S.prepareStudents([{ id: 'a', papsRaw: null, papsGiven: null, papsOverride: 40 }, { id: 'b', papsRaw: null, papsGiven: 80 }], o);
+  assert.strictEqual(none[0].papsPoints, 40); assert.strictEqual(none[0].papsImputed, false);
+  // 편성에도 수정 점수가 쓰임
+  const ev = A.evaluateTeams(after, [[after[0].id], [after[3].id]]);
+  approx(ev.teams[0].meanPaps, 95);
+});
+
+test('state: 학급 목록 순서 바꾸기(위·아래·이름순·끌어 놓기), 지난 편성 기억', () => {
+  const St = require(path.join(__dirname, '..', 'js', 'state.js'));
+  const store = {};
+  globalThis.localStorage = { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
+  try {
+    const labels = () => St.listSaved().map(e => e.label);
+    ['1-2', '1-10', '1-1', '2-1'].forEach(l => St.putSaved(l, St.newSession()));
+    assert.deepStrictEqual(labels(), ['1-2', '1-10', '1-1', '2-1'], '저장한 순서');
+    St.moveSaved('1-1', -1); assert.deepStrictEqual(labels(), ['1-2', '1-1', '1-10', '2-1']);
+    St.moveSaved('1-2', 1); assert.deepStrictEqual(labels(), ['1-1', '1-2', '1-10', '2-1']);
+    St.moveSaved('1-1', -1); St.moveSaved('2-1', 1); St.moveSaved('없는 반', 1);
+    assert.deepStrictEqual(labels(), ['1-1', '1-2', '1-10', '2-1'], '끝에서는 그대로');
+    St.reorderSaved(['2-1', '1-10', '없는 반']); assert.deepStrictEqual(labels(), ['2-1', '1-10', '1-1', '1-2']);
+    St.sortSaved(); assert.deepStrictEqual(labels(), ['1-1', '1-2', '1-10', '2-1'], '이름순은 숫자를 수로 비교');
+    St.putSaved('1-2', St.newSession()); assert.deepStrictEqual(labels(), ['1-1', '1-2', '1-10', '2-1'], '다시 저장해도 자리는 그대로');
+    assert.strictEqual(St.getSaved('1-10').classLabel, '1-10');
+  } finally { delete globalThis.localStorage; }
+  // 지난 편성: 결과를 바꾸기 직전에 기억, 같은 편성은 중복 저장하지 않음, 최근 것이 앞
+  const s = St.newSession();
+  assert.deepStrictEqual(St.pastTeams(s), []);
+  St.rememberResult(s, [['a']]); assert.strictEqual(s.teamHistory.length, 0, '결과가 없으면 남기지 않음');
+  s.result = { teams: [['a', 'b'], ['c', 'd']] };
+  St.rememberResult(s, [['b', 'a'], ['d', 'c']]); assert.strictEqual(s.teamHistory.length, 0, '같은 편성을 다시 저장하면 남기지 않음');
+  St.rememberResult(s, [['a', 'c'], ['b', 'd']]); assert.deepStrictEqual(s.teamHistory, [[['a', 'b'], ['c', 'd']]]);
+  s.result = { teams: [['a', 'c'], ['b', 'd']] };
+  assert.deepStrictEqual(St.pastTeams(s), [[['a', 'c'], ['b', 'd']], [['a', 'b'], ['c', 'd']]]);
+  for (let i = 0; i < 10; i++) { St.rememberResult(s, [['x' + i]]); s.result = { teams: [['x' + i, 'a'], ['b']] }; }
+  assert.strictEqual(s.teamHistory.length, St.HISTORY_MAX);
+  // 예전 세션 파일(새 필드 없음)도 읽힘
+  const old = St.hydrate({ students: [], options: { teamCount: 4 } });
+  assert.deepStrictEqual(old.teamHistory, []); assert.deepStrictEqual(old.options.captains, {});
+  assert.notStrictEqual(old.options.captains, St.DEFAULT_OPTIONS.captains, '기본값 객체를 공유하지 않음');
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

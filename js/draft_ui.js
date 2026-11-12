@@ -68,6 +68,8 @@
   /* 익명 드래프트 표시 도우미 */
   function showNames() { return !draft || !draft.anonymous || ui.revealNames; }
   function isPinned(p) { return !!(draft && draft.pinned && draft.pinned[p.id] !== undefined); }
+  /* 팀 t 의 주장(학생 객체) 또는 null */
+  function captainOf(t) { var id = draft && draft.captains ? draft.captains[t] : null; return (id !== null && id !== undefined && byId[id]) || null; }
   /* 팀 고정 학생은 익명 모드에서도 실명 */
   function labelOf(p) { return (showNames() || isPinned(p)) ? (p.name || '(이름 없음)') : (draft.codes && draft.codes[p.id]) || '선수'; }
   function avatarText(p) {
@@ -122,7 +124,54 @@
     }
     $('#d-setup-info').textContent = prepared.length ? ('학생 ' + prepared.length + '명 (남 ' + prepared.filter(function (p) { return p.gender === '남'; }).length + ' · 여 ' + prepared.filter(function (p) { return p.gender === '여'; }).length + ')' + (pinnedN ? ' · 팀 고정 ' + pinnedN + '명은 해당 팀에 미리 배치됩니다(실명 표시)' : '') + '. 방식을 고르고 시작하세요.') : '학생 자료가 없습니다. 메인 화면 1단계에서 자료를 불러온 뒤 다시 여세요.';
     $('#d-start').disabled = !prepared.length;
-    renderNames(); renderOrder(); updateModeUI();
+    /* 팀 주장: 지난번에 정한 주장을 이어받음 (명단에 없는·불참 학생은 제외) */
+    ui.captains = {};
+    Object.keys(o.captains || {}).forEach(function (t) { if (byId[o.captains[t]]) ui.captains[t] = o.captains[t]; });
+    /* 새로운 조합: 지난 편성이 있을 때만 (기본 켬) */
+    ui.hasPast = St.pastTeams(session).length > 0;
+    $('#d-mix').checked = ui.hasPast;
+    renderNames(); renderCaptains(); renderOrder(); updateModeUI();
+  }
+  /* ---------- 팀 주장 지정 ---------- */
+  function genderOf(p) { return p.gender === '여' ? '여' : '남'; }
+  /* 팀 수·남녀 따로 설정이 바뀌면 맞지 않는 주장을 걷어냄. 반환: {팀 번호: 학생 id} */
+  function validCaptains() {
+    var K = totalTeams(), sp = currentSplit(), out = {}, used = {};
+    Object.keys(ui.captains || {}).forEach(function (tk) {
+      var t = parseInt(tk, 10), id = ui.captains[tk], p = byId[id];
+      if (!p || isNaN(t) || t < 0 || t >= K || used[id]) return;
+      if (sp && genderOf(p) !== (t < sp['남'] ? '남' : '여')) return;
+      out[t] = id; used[id] = true;
+    });
+    return out;
+  }
+  function renderCaptains() {
+    var box = clear($('#d-captains'));
+    var K = totalTeams(), sp = currentSplit(), names = currentNames();
+    ui.captains = validCaptains();
+    var teamOfCap = {}; Object.keys(ui.captains).forEach(function (t) { teamOfCap[ui.captains[t]] = +t; });
+    var sorted = prepared.slice().sort(function (a, b) {
+      var x = a.no !== null && a.no !== undefined ? a.no : 1e9, y = b.no !== null && b.no !== undefined ? b.no : 1e9;
+      return x - y || String(a.name || '').localeCompare(String(b.name || ''), 'ko');
+    });
+    for (var t = 0; t < K; t++) (function (t) {
+      if (sp && (t === 0 || t === sp['남'])) box.appendChild(h('div', { class: 'group-title', text: t === 0 ? '남자 팀' : '여자 팀' }));
+      var tg = sp ? (t < sp['남'] ? '남' : '여') : null;
+      var sel = h('select', { 'data-team': t, 'aria-label': names[t] + ' 주장', onchange: function (e) {
+        if (e.target.value) ui.captains[t] = e.target.value; else delete ui.captains[t];
+        renderCaptains(); renderOrder();
+      } }, h('option', { value: '', text: '— 주장 없음 —' }));
+      sorted.forEach(function (p) {
+        if (tg && genderOf(p) !== tg) return;
+        var other = teamOfCap[p.id] !== undefined && teamOfCap[p.id] !== t;
+        sel.appendChild(h('option', { value: p.id, selected: ui.captains[t] === p.id, disabled: other,
+          text: (p.no !== null && p.no !== undefined ? p.no + ' ' : '') + (p.name || '(이름 없음)') + (p.gender ? ' (' + p.gender + ')' : '') + (other ? ' — ' + names[teamOfCap[p.id]] + ' 주장' : '') }));
+      });
+      box.appendChild(h('label', { class: ui.captains[t] ? 'set' : '' }, h('i', { style: 'background:' + color(t) }), h('span', { class: 'tn', text: names[t] }), sel));
+    })(t);
+    var n = Object.keys(ui.captains).length;
+    $('#d-cap-info').textContent = n ? n + ' / ' + K + '팀 지정' + (n < K ? ' — 나머지 팀은 주장 없이 진행' : '') : '아직 지정한 주장이 없습니다';
+    $('#d-cap-clear').disabled = !n;
   }
   /* 남녀 따로 설정값: {남: Km, 여: Kf} 또는 null */
   function currentSplit() {
@@ -133,12 +182,14 @@
   function updateModeUI() {
     $('#d-weight-wrap').style.display = ui.mode === 'credit' ? '' : 'none';
     $('#d-anon-wrap').style.display = ui.mode === 'auto' ? 'none' : '';
+    $('#d-captains-wrap').hidden = ui.mode === 'auto' || !prepared.length;
+    $('#d-mix-wrap').hidden = !(ui.mode === 'auto' && ui.hasPast);
     var sp = currentSplit();
     $('#d-split-counts').hidden = !sp;
     $('#d-teamCount-wrap').style.display = sp ? 'none' : '';
     $('#d-gender-wrap').style.display = sp ? 'none' : '';
     var warn = '';
-    if (ui.mode === 'auto') warn = '시작하면 메인 3단계 설정(허용편차·제약 조건 포함)과 추첨 시드로 팀을 새로 편성해 한 명씩 공개합니다. 다른 조합을 원하면 🎲 순서 추첨을 다시 누르세요.';
+    if (ui.mode === 'auto') warn = '시작하면 메인 3단계 설정(허용편차·제약 조건 포함)으로 팀을 새로 편성해 한 명씩 공개합니다.' + (ui.hasPast ? ($('#d-mix').checked ? ' "새로운 조합"이 켜져 있어 지난 편성에서 같은 팀이었던 학생들이 되도록 다시 만나지 않게 짭니다(팀 평균은 비슷하게 유지).' : ' "새로운 조합"을 켜면 지난 편성과 덜 겹치는 팀으로 짭니다.') : ' 다른 조합을 원하면 🎲 순서 추첨을 다시 누르세요.');
     if (ui.mode !== 'auto' && prepared.some(function (p) { return !p.gender; }) && $('#d-gender').checked && !sp) warn = '성별이 없는 학생은 별도 풀(미상)로 지명됩니다. 메인 명단에서 성별을 채우면 더 정확합니다.';
     if (sp) {
       var nm = prepared.filter(function (p) { return p.gender === '남'; }).length, nf = prepared.filter(function (p) { return p.gender === '여'; }).length, nu = prepared.length - nm - nf;
@@ -169,25 +220,31 @@
     var box = clear($('#d-order'));
     try {
       var st = D.initDraft(prepared.slice(0, 1), { mode: 'credit', teamCount: K, split: sp, seed: ui.seed, teamNames: names });
+      /* 주장을 정한 팀은 순서 칩에 주장 이름도 함께 (누가 지명하는지 보이도록) */
+      var caps = ui.mode === 'auto' ? {} : (ui.captains || {});
+      var chipText = function (t, i) { var c = byId[caps[t]]; return (i + 1) + '. ' + names[t] + (c ? ' 👑 ' + (c.name || '') : ''); };
       if (sp) {
         ['남', '여'].forEach(function (g) {
           box.appendChild(h('span', { class: 'hint', text: (g === '남' ? '남자 팀' : '여자 팀') + ' 1라운드 순서: ' }));
-          st.orderG[g].forEach(function (t, i) { box.appendChild(h('span', { class: 'chip', style: 'background:' + color(t) + ';animation-delay:' + (i * 90) + 'ms', text: (i + 1) + '. ' + names[t] })); });
+          st.orderG[g].forEach(function (t, i) { box.appendChild(h('span', { class: 'chip', style: 'background:' + color(t) + ';animation-delay:' + (i * 90) + 'ms', text: chipText(t, i) })); });
         });
       } else {
         box.appendChild(h('span', { class: 'hint', text: '1라운드 순서: ' }));
-        st.order.forEach(function (t, i) { box.appendChild(h('span', { class: 'chip', style: 'background:' + color(t) + ';animation-delay:' + (i * 90) + 'ms', text: (i + 1) + '. ' + names[t] })); });
+        st.order.forEach(function (t, i) { box.appendChild(h('span', { class: 'chip', style: 'background:' + color(t) + ';animation-delay:' + (i * 90) + 'ms', text: chipText(t, i) })); });
       }
     } catch (e) { box.appendChild(h('span', { class: 'hint', text: e.message })); }
   }
   function bindSetup() {
-    $$('.mode-card').forEach(function (b) { b.addEventListener('click', function () { ui.mode = b.dataset.mode; $$('.mode-card').forEach(function (x) { x.classList.toggle('selected', x === b); }); updateModeUI(); }); });
-    $('#d-teamCount').addEventListener('change', function () { renderNames(); renderOrder(); });
-    ['#d-split', '#d-teamCountM', '#d-teamCountF'].forEach(function (sel) { $(sel).addEventListener('change', function () { updateModeUI(); renderNames(); renderOrder(); }); });
+    $$('.mode-card').forEach(function (b) { b.addEventListener('click', function () { ui.mode = b.dataset.mode; $$('.mode-card').forEach(function (x) { x.classList.toggle('selected', x === b); }); updateModeUI(); renderOrder(); }); });
+    $('#d-teamCount').addEventListener('change', function () { renderNames(); renderCaptains(); renderOrder(); });
+    ['#d-split', '#d-teamCountM', '#d-teamCountF'].forEach(function (sel) { $(sel).addEventListener('change', function () { updateModeUI(); renderNames(); renderCaptains(); renderOrder(); }); });
     $('#d-gender').addEventListener('change', updateModeUI);
+    $('#d-mix').addEventListener('change', updateModeUI);
     $('#d-weight').addEventListener('input', function (e) { $('#d-weight-val').textContent = Math.round(e.target.value * 100) + '%'; });
     $('#d-lottery').addEventListener('click', function () { ui.seed = 1 + Math.floor(Math.random() * 1e6); renderOrder(); });
-    $('#d-names').addEventListener('input', renderOrder);
+    $('#d-names').addEventListener('input', function () { renderOrder(); });
+    $('#d-names').addEventListener('change', renderCaptains);   // 팀 이름을 바꾸면 주장 칸의 팀 이름도 갱신
+    $('#d-cap-clear').addEventListener('click', function () { ui.captains = {}; renderCaptains(); renderOrder(); });
     $('#d-start').addEventListener('click', start);
   }
 
@@ -204,21 +261,31 @@
     var genderBalance = !sp && $('#d-gender').checked;
     var weight = parseFloat($('#d-weight').value);
     var timerSec = $('#d-timer').checked ? Math.max(5, parseInt($('#d-timer-sec').value, 10) || 30) : 0;
-    var autoTeams = null;
+    var autoTeams = null, mixNote = '';
     if (ui.mode === 'auto') {
-      /* 시작할 때마다 현재 설정(팀 수·성별 균형·허용편차·제약)과 추첨 시드로 새로 편성 */
-      var res = A.buildTeams(prepared, Object.assign({}, session.options, { teamCount: K, genderBalance: genderBalance, genderSeparate: !!sp, teamCountM: sp ? sp['남'] : 0, teamCountF: sp ? sp['여'] : 0, seed: ui.seed }));
+      /* 시작할 때마다 현재 설정(팀 수·성별 균형·허용편차·제약)과 추첨 시드로 새로 편성.
+       * "새로운 조합"이 켜져 있으면 지난 편성에서 같은 팀이었던 짝이 덜 겹치게 (매번 다른 시드) */
+      var past = (ui.hasPast && $('#d-mix').checked) ? St.pastTeams(session) : [];
+      if (past.length) ui.seed = 1 + Math.floor(Math.random() * 1e6);
+      var res = A.buildTeams(prepared, Object.assign({}, session.options, { teamCount: K, genderBalance: genderBalance, genderSeparate: !!sp, teamCountM: sp ? sp['남'] : 0, teamCountF: sp ? sp['여'] : 0, seed: ui.seed, avoid: past }));
       autoTeams = res.teams;
-      if (res.log && res.log.length) toast(res.log[0]);
+      if (past.length) {
+        var shp = A.sharedPairs(past[0], res.teams);
+        mixNote = '새로운 조합으로 편성했습니다 — 지난 편성과 같은 팀인 짝은 ' + shp.total + '쌍 중 ' + shp.shared + '쌍입니다.';
+      }
+      if (res.log && res.log.length) toast(res.log[0]); else if (mixNote) toast(mixNote);
     }
     var anonymous = ui.mode !== 'auto' && $('#d-anon').checked;
+    var captains = ui.mode === 'auto' ? {} : validCaptains();
     try {
-      draft = D.initDraft(prepared, { mode: ui.mode, teamCount: K, split: sp, genderBalance: genderBalance, seed: ui.seed, fitnessWeight: weight, teamNames: names, autoTeams: autoTeams, anonymous: anonymous, pinned: session.options.pinned || {} });
+      draft = D.initDraft(prepared, { mode: ui.mode, teamCount: K, split: sp, genderBalance: genderBalance, seed: ui.seed, fitnessWeight: weight, teamNames: names, autoTeams: autoTeams, anonymous: anonymous, pinned: session.options.pinned || {}, captains: captains });
     } catch (e) { toast(e.message, true); return; }
     draft.studentKey = prepared.map(function (p) { return p.id; }).sort().join('|');
     draft.timerSec = timerSec;
+    draft.mixNote = mixNote;
     St.update(function (s) {
       s.draft = draft; s.teamNames = names;
+      if (ui.mode !== 'auto') s.options.captains = captains;
       s.options.draftMode = ui.mode; s.options.teamCount = sp ? s.options.teamCount : K; s.options.genderBalance = sp ? s.options.genderBalance : genderBalance; s.options.creditFitnessWeight = weight; s.options.draftTimerSec = timerSec;
       s.options.genderSeparate = !!sp; if (sp) { s.options.teamCountM = sp['남']; s.options.teamCountF = sp['여']; }
       s.options.draftAnonymous = $('#d-anon').checked;
@@ -258,9 +325,11 @@
     if (cur) {
       now.appendChild(h('span', { class: 'team-dot', style: 'background:' + color(cur.team) }));
       now.appendChild(h('span', { text: draft.teamNames[cur.team] + (draft.mode === 'auto' ? ' 선수 공개' : ' 지명 차례') }));
-      /* 미리 배치된(고정) 학생이 있으면 지명 주체로 함께 표시 */
+      /* 지명 주체: 팀 주장이 있으면 주장, 없으면 미리 배치된(고정) 학생을 함께 표시 */
+      var cap = captainOf(cur.team);
       var fixed = (draft.prePlaced || []).filter(function (id) { return draft.pinned[id] === cur.team && byId[id]; }).map(function (id) { return byId[id].name || id; });
-      if (fixed.length && draft.mode !== 'auto') now.appendChild(h('span', { class: 'sub', text: '📌 ' + fixed.join(', ') + ' 지명' }));
+      if (cap && draft.mode !== 'auto') now.appendChild(h('span', { class: 'sub cap', text: '👑 주장 ' + (cap.name || '') + ' 지명' }));
+      else if (fixed.length && draft.mode !== 'auto') now.appendChild(h('span', { class: 'sub', text: '📌 ' + fixed.join(', ') + ' 지명' }));
       if (draft.mode === 'credit') now.appendChild(h('span', { class: 'sub', text: '남은 크레딧 ' + (draft.budgets[cur.team] - draft.spent[cur.team]) + ' / 남은 자리 ' + D.remainingSlots(draft, cur.team) }));
       else if (draft.mode === 'pick') now.appendChild(h('span', { class: 'sub', text: '풀 ' + (cur.pool + 1) + '/' + draft.pools.length + ' · 체력·인성 수준이 비슷한 ' + draft.pools[cur.pool].length + '명 중 원하는 덕목 성향을 고르세요' }));
     } else now.appendChild(h('span', { text: '🎉 드래프트 완료!' }));
@@ -371,7 +440,7 @@
     box.classList.toggle('stack-groups', stackGroups);
     box.classList.toggle('credit', draft.mode === 'credit');
     /* --chrome: 보드 한 줄에서 선수 줄 말고 차지하는 높이(머리·예산·요약·그룹 제목) */
-    box.style.setProperty('--chrome', (7.2 + (draft.mode === 'credit' ? 2.4 : 0) + (draft.split ? 2.7 : 0)) + 'rem');
+    box.style.setProperty('--chrome', (7.2 + (draft.mode === 'credit' ? 2.4 : 0) + (draft.split ? 2.7 : 0) + ((draft.captains || []).some(function (c) { return c !== null && c !== undefined; }) ? 1.8 : 0)) + 'rem');
     box.style.setProperty('--rows', Math.max.apply(null, draft.slots.concat([1])));
     box.style.setProperty('--cols', cols);
     box.style.setProperty('--stack', stack);
@@ -390,7 +459,9 @@
     }
     for (var t = 0; t < draft.K; t++) (function (t) {
       var b = h('div', { class: 'board' + (cur && cur.team === t ? ' active' : ''), style: '--team:' + color(t), dataset: { team: t } });
+      var capP = captainOf(t);
       b.appendChild(h('div', { class: 'board-head' }, h('b', { text: draft.teamNames[t] }), h('span', { class: 'cnt', text: draft.teams[t].length + ' / ' + draft.slots[t] + '명' })));
+      if (capP) b.appendChild(h('div', { class: 'board-cap', title: '팀 주장 — 이 팀의 선수를 지명합니다' }, '👑 주장 ', h('b', { text: capP.name || '(이름 없음)' })));
       if (draft.mode === 'credit') {
         var left = draft.budgets[t] - draft.spent[t], pct = draft.budgets[t] ? Math.round(draft.spent[t] / draft.budgets[t] * 100) : 0;
         b.appendChild(h('div', { class: 'budget' }, '💎 ' + draft.spent[t] + ' / ' + draft.budgets[t] + ' 사용 · 남음 ' + left, h('div', { class: 'bar' }, h('i', { style: 'width:' + pct + '%' }))));
@@ -400,15 +471,17 @@
       /* 진행 중에는 지명 순서, 완료 후에는 번호순 (지명 순서 = 체력 순이 드러나지 않도록) */
       var memberIds = draft.teams[t].slice();
       if (D.isDone(draft)) memberIds.sort(function (a, b) { var x = byId[a] && byId[a].no !== null ? byId[a].no : 1e9, y = byId[b] && byId[b].no !== null ? byId[b].no : 1e9; return x - y; });
+      /* 주장은 항상 맨 위 */
+      if (capP) memberIds.sort(function (a, b) { return (b === capP.id) - (a === capP.id); });
       memberIds.forEach(function (id, i) {
         var p = byId[id], pr = prof[id];
         if (!p) return;
         var isNew = lastPick && lastPick.id === id && !D.isDone(draft);
-        var pinnedHere = isPinned(p);
-        ul.appendChild(h('li', { class: 'member' + (isNew ? ' new' : '') + (ui.revealAnim && !pinnedHere ? ' unmask' : '') + (pinnedHere ? ' pinned' : ''), style: 'animation-delay:' + (ui.revealAnim ? (t * 120 + i * 90) : (isNew ? 0 : i * 40)) + 'ms', title: (pinnedHere ? '팀 고정 (미리 배치)' : '') + (ui.detail ? ('\nPAPS ' + fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' ')) : '') },
+        var pinnedHere = isPinned(p), isCap = !!capP && capP.id === id;
+        ul.appendChild(h('li', { class: 'member' + (isNew ? ' new' : '') + (ui.revealAnim && !pinnedHere ? ' unmask' : '') + (pinnedHere ? ' pinned' : '') + (isCap ? ' captain' : ''), style: 'animation-delay:' + (ui.revealAnim ? (t * 120 + i * 90) : (isNew ? 0 : i * 40)) + 'ms', title: (isCap ? '팀 주장' : pinnedHere ? '팀 고정 (미리 배치)' : '') + (ui.detail ? ('\nPAPS ' + fmt(p.papsPoints, 0) + '점 · ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' ')) : '') },
           h('span', { class: 'mini' }, jersey(avatarText(p), color(t), 'small')),
           h('span', { class: 'nm', text: labelOf(p) }),
-          pinnedHere ? h('span', { class: 'pin', text: '📌', title: '팀 고정' }) : null,
+          isCap ? h('span', { class: 'pin', text: '👑', title: '팀 주장' }) : pinnedHere ? h('span', { class: 'pin', text: '📌', title: '팀 고정' }) : null,
           h('span', { class: 'tg', text: pr.icon + (draft.mode === 'credit' ? ' 💎' + draft.costs[id] : '') })));
       });
       for (var s = draft.teams[t].length; s < draft.slots[t]; s++) ul.appendChild(h('li', { class: 'member slot', text: '빈 자리' }));
@@ -532,8 +605,13 @@
     var mode = draft.mode;
     St.update(function (s) {
       var teams = draft.teams.map(function (t) { return t.slice(); });
+      var log = [MODE_LABEL[mode] + ' 결과입니다.' + (draft.split ? ' 남자 팀 ' + draft.split['남'] + '개 · 여자 팀 ' + draft.split['여'] + '개로 따로 편성했습니다.' : '')];
+      if (draft.mixNote) log.push(draft.mixNote);
+      /* 바뀌기 전 결과는 지난 편성으로 남겨 둠 — 다음 "새로운 조합" 편성 때 같은 팀이 덜 겹치게 */
+      St.rememberResult(s, teams);
       /* original: 편성 직후 상태 — 수동 조정 후 "편성 직후로 복원"에 사용 */
-      s.result = { teams: teams, original: teams.map(function (t) { return t.slice(); }), seed: draft.seed, log: [MODE_LABEL[mode] + ' 결과입니다.' + (draft.split ? ' 남자 팀 ' + draft.split['남'] + '개 · 여자 팀 ' + draft.split['여'] + '개로 따로 편성했습니다.' : '')], builtAt: new Date().toISOString(), source: 'draft', mode: mode, note: '', split: draft.split || null };
+      s.result = { teams: teams, original: teams.map(function (t) { return t.slice(); }), seed: draft.seed, log: log, builtAt: new Date().toISOString(), source: 'draft', mode: mode, note: '', split: draft.split || null,
+        captains: (draft.captains || []).slice() };
       s.manualEdits = false; s.teamNames = draft.teamNames.slice(); s.draft = draft;
     }, { noUndo: true });
     St.persistNow();
