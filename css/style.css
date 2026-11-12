@@ -128,9 +128,27 @@ table.roster input[type=text] { text-align: left; min-width: 6em; }
 table.roster td.num { font-variant-numeric: tabular-nums; }
 table.roster td.num > span:first-child { margin-right: .25rem; }
 table.roster input::placeholder { color: #b5bfcc; }
-table.roster .gcell { display: inline-flex; align-items: center; gap: .25rem; white-space: nowrap; }
-table.roster .gcell select { width: auto; min-width: 3.4em; }
-table.roster .gcell select.inferred { border-color: #e2c97e; background: #fffaf0; }
+table.roster .gcell { display: flex; align-items: center; gap: .25rem; white-space: nowrap; }   /* 왼쪽 맞춤: '추정' 표시가 사라져도 버튼 위치가 그대로 */
+/* 성별: 한 번 누르는 남·여 버튼 */
+table.roster .gseg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
+table.roster .gseg button { border: 0; background: transparent; padding: .22rem .65rem; min-width: 2.4em; font: inherit; color: #8a96a6; cursor: pointer; user-select: none; -webkit-user-select: none; }
+table.roster .gseg button + button { border-left: 1px solid var(--line); }
+table.roster .gseg button:hover { background: #eef3fb; color: var(--ink); }
+table.roster .gseg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+table.roster .gseg button.on.m { background: #1f6feb; color: #fff; font-weight: 700; }
+table.roster .gseg button.on.f { background: #d6336c; color: #fff; font-weight: 700; }
+table.roster .gseg.blank { border-color: #e2c97e; background: #fffaf0; }
+table.roster .gseg.blank button + button { border-left-color: #eadfbd; }
+/* 추정한 성별: 옅게 (한 번 누르면 확정) */
+table.roster .gseg.guess { border-style: dashed; border-color: #b9c4d3; }
+table.roster .gseg.guess button.on.m { background: #e3ecff; color: #1f4fa3; }
+table.roster .gseg.guess button.on.f { background: #ffe4ec; color: #a3244b; }
+.gender-tools { display: flex; align-items: center; gap: .45rem .7rem; flex-wrap: wrap; margin-top: .6rem; padding: .5rem .8rem; border: 1px solid var(--line); border-radius: 10px; background: #f7f9fc; font-size: .9rem; }
+.gender-tools .gt-msg { color: var(--ok); }
+.gender-tools .hint { flex: 1 1 18rem; }
+.gender-tools .btn.small { font-size: .9rem; padding: .3rem .7rem; }
+.gender-tools.todo { position: sticky; bottom: .6rem; z-index: 5; border-color: #e2c97e; background: var(--warn-bg); box-shadow: 0 4px 14px rgba(16, 24, 40, .14); }
+.gender-tools.todo .gt-msg { color: var(--warn-ink); }
 /* 참여 상태 (결석·활동 제한·기록/심판은 편성 제외) */
 table.roster select.status-select { width: auto; min-width: 4.6em; margin-right: .3rem; border-color: var(--line); background: #fff; }
 table.roster select.status-select.off { border-color: #e2c97e; background: var(--warn-bg); color: var(--warn-ink); font-weight: 600; }
@@ -498,6 +516,9 @@ body.pv-open { overflow: hidden; }
   .dropzone .row { flex-wrap: wrap; }
   table.roster { font-size: .95rem; }
   table.roster th, table.roster td { padding: .4rem .5rem; }
+  /* 화면 아래에 붙는 성별 막대는 버튼만 (설명 글은 화면을 많이 가림) */
+  .gender-tools { padding: .5rem .6rem; }
+  .gender-tools.todo .hint { display: none; }
   .badge { font-size: .8rem; }
   .settings-grid label { font-size: 1rem; }
   .teams-grid { grid-template-columns: 1fr; }

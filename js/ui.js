@@ -41,6 +41,45 @@
     return el;
   }
   function clear(el) { while (el && el.firstChild) el.removeChild(el.firstChild); return el; }
+  /* 이미 화면에 있는 요소 a 를 새로 만든 b 와 같아지도록 고침. 요소를 갈아 끼우지 않으므로
+   * 입력 중인 칸의 포커스·화면 위치·누르려던 버튼이 그대로 남는다. (이벤트는 위임으로 처리하는 곳에만 사용) */
+  function morph(a, b) {
+    if (a.nodeType !== b.nodeType || a.nodeName !== b.nodeName) { a.parentNode.replaceChild(b, a); return b; }
+    if (a.nodeType !== 1) { if (a.nodeValue !== b.nodeValue) a.nodeValue = b.nodeValue; return a; }
+    var i, at;
+    for (i = a.attributes.length - 1; i >= 0; i--) { at = a.attributes[i]; if (!b.hasAttribute(at.name)) a.removeAttribute(at.name); }
+    for (i = 0; i < b.attributes.length; i++) { at = b.attributes[i]; if (a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value); }
+    var ac = a.firstChild, bc = b.firstChild, an, bn;
+    while (bc) {
+      bn = bc.nextSibling;
+      if (ac) { an = ac.nextSibling; morph(ac, bc); ac = an; } else a.appendChild(bc);
+      bc = bn;
+    }
+    while (ac) { an = ac.nextSibling; a.removeChild(ac); ac = an; }
+    /* 사용자가 한 번 건드린 입력 칸은 속성만 바꿔서는 표시 값이 따라오지 않음 */
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(a.nodeName) && a.value !== b.value) a.value = b.value;
+    return a;
+  }
+  /* body 의 줄(data-id 로 구분)을 rows 와 같게 맞춤: 같은 학생의 줄은 그대로 두고 내용만 고치며, 순서가 바뀐 줄만 옮김 */
+  function syncRows(body, rows) {
+    var want = {}, old = {};
+    rows.forEach(function (r) { if (r.dataset.id) want[r.dataset.id] = true; });
+    $$('tr', body).forEach(function (r) {
+      var id = r.dataset.id;
+      if (r.parentNode !== body) return;
+      if (!id || !want[id] || old[id]) body.removeChild(r); else old[id] = r;
+    });
+    var act = document.activeElement, ref = body.firstChild;
+    rows.forEach(function (r) {
+      var cur = r.dataset.id ? old[r.dataset.id] : null;
+      if (!cur) { body.insertBefore(r, ref); return; }
+      delete old[r.dataset.id];
+      morph(cur, r);
+      if (cur === ref) ref = ref.nextSibling; else body.insertBefore(cur, ref);
+    });
+    /* 줄이 옮겨지면서 포커스를 잃었으면 돌려놓음 (화면은 움직이지 않게) */
+    if (act && act !== document.activeElement && body.contains(act)) { try { act.focus({ preventScroll: true }); } catch (e) { /* ignore */ } }
+  }
   function fmt(x, d) { return (typeof x === 'number' && isFinite(x)) ? x.toFixed(d === undefined ? 2 : d) : '–'; }
   function fz(x) { return (typeof x === 'number' && isFinite(x)) ? (x >= 0 ? '+' : '') + x.toFixed(2) : '–'; }
   var toastTimer = null;
@@ -733,10 +772,11 @@
    * 2. 명단
    * ============================================================ */
   function renderRoster(s, prep) {
-    var body = clear($('#roster-body'));
+    /* 줄을 새로 만든 뒤 화면의 표와 맞춰 고침(syncRows) — 표를 지우고 다시 그리면 화면이 위로 튀고 입력 중인 칸이 풀림 */
+    var body = $('#roster-body'), rows = [];
     var byId = {}; prep.forEach(function (p) { byId[p.id] = p; });
     if (!s.students.length) {
-      body.appendChild(h('tr', null, h('td', { colspan: 10, class: 'empty', text: '1단계에서 자료를 불러오거나 "학생 추가"로 직접 입력하세요.' })));
+      rows.push(h('tr', null, h('td', { colspan: 10, class: 'empty', text: '1단계에서 자료를 불러오거나 "학생 추가"로 직접 입력하세요.' })));
     }
     s.students.forEach(function (st) {
       var p = byId[st.id];
@@ -744,10 +784,17 @@
       var tr = h('tr', { dataset: { id: st.id }, class: inactive ? 'inactive' : '', title: inactive ? (St.STATUS_LABEL[st.status] || '') + ' — 오늘 편성에서 제외' : '' });
       tr.appendChild(h('td', null, h('input', { type: 'number', min: 1, 'data-field': 'no', value: st.no === null || st.no === undefined ? '' : st.no, title: '출석번호 (파일의 번호 그대로)' })));
       tr.appendChild(h('td', null, h('input', { type: 'text', 'data-field': 'name', value: st.name || '', placeholder: '이름' })));
+      /* 성별: 한 번 누르는 남·여 버튼 (고르는 목록 대신). 추정한 성별은 옅게 표시하고, 한 번 누르면 확정 */
+      var guess = !!(st.gender && st.genderInferred);
       tr.appendChild(h('td', null, h('div', { class: 'gcell' },
-        h('select', { 'data-field': 'gender', class: st.gender && st.genderInferred ? 'inferred' : '', title: st.genderInferred ? '나이스 점수와 기준표를 대조해 추정한 성별입니다. 틀리면 고쳐 주세요.' : '' },
-          h('option', { value: '', text: '–', selected: !st.gender }), h('option', { value: '남', text: '남', selected: st.gender === '남' }), h('option', { value: '여', text: '여', selected: st.gender === '여' })),
-        st.gender && st.genderInferred ? h('span', { class: 'badge', text: '추정', title: '나이스 점수와 기준표를 대조해 추정한 성별' }) : null)));
+        h('div', { class: 'gseg' + (st.gender ? '' : ' blank') + (guess ? ' guess' : ''), role: 'group', 'aria-label': '성별' },
+          ['남', '여'].map(function (g) {
+            var on = st.gender === g;
+            return h('button', { type: 'button', 'data-g': g, class: (g === '남' ? 'm' : 'f') + (on ? ' on' : ''), 'aria-pressed': on ? 'true' : 'false',
+              title: on ? (guess ? '나이스 점수와 기준표를 대조해 추정한 성별입니다. 맞으면 한 번 눌러 확정하고, 틀리면 다른 쪽을 누르세요.' : null)
+                : g + '학생으로 표시 · Shift를 누른 채 누르면 방금 누른 학생부터 이 학생까지 한꺼번에 바뀝니다' }, g);
+          })),
+        guess ? h('span', { class: 'badge', text: '추정', title: '나이스 점수와 기준표를 대조해 추정한 성별' }) : null)));
       /* PAPS */
       var papsTd = h('td', { class: 'num' });
       var d = p.papsDetail;
@@ -801,12 +848,14 @@
       if (!st.gender) stTd.appendChild(h('span', { class: 'badge', text: '성별 미상' }));
       tr.appendChild(stTd);
       tr.appendChild(h('td', null, h('button', { class: 'btn ghost small danger', type: 'button', title: '삭제', 'data-action': 'delete' }, '✕')));
-      body.appendChild(tr);
+      rows.push(tr);
     });
+    syncRows(body, rows);
     /* 요약 */
     var m = s.students.filter(function (x) { return x.gender === '남'; }).length;
     var f = s.students.filter(function (x) { return x.gender === '여'; }).length;
     var u = s.students.length - m - f;
+    renderGenderTools(s, m, f, u);
     var hasP = prep.filter(function (p) { return !p.papsImputed; }).length;
     var hasV = prep.filter(function (p) { return !p.virtueImputed && (p.items || p.virtuesGiven); }).length;
     var rel = prep.filter(function (p) { return p.papsDetail && p.papsDetail.source === 'relative'; }).length;
@@ -819,6 +868,33 @@
     $('#roster-summary').textContent = s.students.length ? ((s.classLabel ? s.classLabel + ' 학급 · ' : '') + '총 ' + s.students.length + '명 · 남 ' + m + ' 여 ' + f + (u ? ' 미상 ' + u : '') + ' · PAPS ' + hasP + '명' + (rel ? ' (상대점수 ' + rel + '명)' : '') + (edited ? ' (교사 수정 ' + edited + '명)' : '') + ' · 인성 ' + hasV + '명' + link + (inact ? ' · 오늘 불참 ' + inact + '명 (편성 ' + (s.students.length - inact) + '명)' : '')) : '';
   }
 
+  /* 성별 한 번에 넣기 막대 (표 아래): 빈칸이 있으면 화면 아래에 붙어 따라다님 */
+  function renderGenderTools(s, m, f, u) {
+    var box = $('#gender-tools');
+    if (!box) return;
+    var n = s.students.length;
+    var guess = s.students.filter(function (x) { return x.gender && x.genderInferred; }).length;
+    box.hidden = !n;
+    box.classList.toggle('todo', u > 0);
+    $('#btn-gfill-m').hidden = $('#btn-gfill-f').hidden = !u;
+    $('#btn-gconfirm').hidden = !guess;
+    $('#gender-tools-msg').textContent = u ? '성별 빈칸 ' + u + '명' : (guess ? '성별 추정 ' + guess + '명 — 맞는지 확인하세요' : '✔ 성별 입력 완료 · 남 ' + m + '명 · 여 ' + f + '명');
+    $('#gender-tools-hint').textContent = u
+      ? (m + f ? '남은 학생이 모두 같은 성별이면 한 번에 채우세요.' : '남녀 합반이면 한쪽 성별만 먼저 눌러 표시한 뒤, 나머지를 한 번에 채우면 빠릅니다.') + ' Shift를 누른 채 누르면 방금 누른 학생부터 그 학생까지 함께 바뀝니다.'
+      : (guess ? '옅게 표시된 성별은 나이스 점수로 추정한 것입니다. 틀린 학생만 고친 뒤 확정하세요.' : '');
+  }
+
+  /* ids 학생의 성별을 g 로 (추정 표시는 해제). 바뀐 학생 수를 돌려줌 — 바뀔 것이 없으면 아무것도 하지 않음 */
+  function setGender(ids, g) {
+    var pick = {}; ids.forEach(function (id) { pick[id] = true; });
+    function need(x) { return pick[x.id] && (x.gender !== g || x.genderInferred); }
+    if (!St.get().students.some(need)) return 0;
+    var n = 0;
+    St.update(function (s) { s.students.forEach(function (x) { if (need(x)) { x.gender = g; x.genderInferred = false; n++; } }); });
+    return n;
+  }
+  var lastGenderId = null;   // Shift+누르기 범위의 시작 (방금 성별을 누른 학생)
+
   function bindRosterEvents() {
     $('#roster-body').addEventListener('change', function (e) {
       var inp = e.target, tr = inp.closest('tr'), field = inp.dataset.field;
@@ -829,7 +905,6 @@
         if (!st) return;
         if (field === 'no') st.no = P.parseNo(val);
         else if (field === 'name') st.name = String(val).trim() || null;
-        else if (field === 'gender') { st.gender = val || null; st.genderInferred = false; }
         else if (field === 'status') st.status = val || '';
         else if (field === 'papsGiven') st.papsGiven = S.toNum(val);
         else if (field === 'papsOverride') {
@@ -843,6 +918,18 @@
       });
     });
     $('#roster-body').addEventListener('click', function (e) {
+      var gb = e.target.closest('button[data-g]');
+      if (gb) {
+        var gid = gb.closest('tr').dataset.id, g = gb.dataset.g, list = St.get().students, ids = [gid];
+        if (e.shiftKey && lastGenderId && lastGenderId !== gid) {
+          var a = list.findIndex(function (x) { return x.id === lastGenderId; }), b = list.findIndex(function (x) { return x.id === gid; });
+          if (a >= 0 && b >= 0) ids = list.slice(Math.min(a, b), Math.max(a, b) + 1).map(function (x) { return x.id; });
+        }
+        setGender(ids, g);
+        lastGenderId = gid;
+        if (ids.length > 1) toast(ids.length + '명을 ' + g + '학생으로 표시했습니다.');
+        return;
+      }
       var rst = e.target.closest('button[data-action=reset-paps]');
       if (rst) {
         var rid = rst.closest('tr').dataset.id;
@@ -862,6 +949,19 @@
         s.options.apart = (s.options.apart || []).filter(function (p) { return p.indexOf(id) < 0; });
         if (s.options.pinned) delete s.options.pinned[id];
       });
+    });
+    ['남', '여'].forEach(function (g) {
+      $(g === '남' ? '#btn-gfill-m' : '#btn-gfill-f').addEventListener('click', function () {
+        var ids = St.get().students.filter(function (x) { return !x.gender; }).map(function (x) { return x.id; });
+        if (!ids.length) return;
+        setGender(ids, g);
+        toast('성별이 비어 있던 ' + ids.length + '명을 ' + g + '학생으로 채웠습니다. 잘못 눌렀으면 위의 "되돌리기"를 누르세요.');
+      });
+    });
+    $('#btn-gconfirm').addEventListener('click', function () {
+      var n = 0;
+      St.update(function (s) { s.students.forEach(function (x) { if (x.gender && x.genderInferred) { x.genderInferred = false; n++; } }); });
+      toast('추정한 성별 ' + n + '명을 그대로 확정했습니다.');
     });
     $('#btn-add-row').addEventListener('click', function () {
       St.update(function (s) {
@@ -1547,11 +1647,14 @@
     var s = St.get();
     var prep = prepare(s);                                                                   // 참여 학생 (편성 대상)
     var prepAll = St.inactiveStudents(s).length ? S.prepareStudents(s.students, s.options) : prep; // 명단 표시용 (불참 포함)
+    var sx = root.scrollX, sy = root.scrollY;
     renderTop(s);
     renderImportStatus(s);
     renderRoster(s, prepAll);
     renderSettings(s, prep);
     renderResult(s, prep);
+    /* 다시 그리는 동안 화면이 밀렸으면 보던 자리로 (값을 바꿀 때 화면이 움직이지 않게) */
+    if (root.scrollY !== sy || root.scrollX !== sx) root.scrollTo({ left: sx, top: sy, behavior: 'instant' });
   }
 
   function init() {

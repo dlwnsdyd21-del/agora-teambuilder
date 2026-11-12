@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1f6feb">
   <title>PAPS + 인성 AI 팀빌딩</title>
   <link rel="icon" type="image/png" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="css/style.css?v=18">
+  <link rel="stylesheet" href="css/style.css?v=19">
 </head>
 <body>
   <header class="topbar">
@@ -106,7 +106,7 @@
           <button id="btn-add-row" class="btn ghost" type="button">+ 학생 추가</button>
         </div>
       </div>
-      <p class="desc simple-only">성별이 비어 있으면 채워 주세요. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다. PAPS 기록과 실제 수행 능력의 차이가 큰 학생은 <b>PAPS 총점</b> 칸의 숫자를 직접 고칠 수 있습니다(<span class="badge warn">교사 수정</span> 표시, ↺로 원래 점수 복원). 오늘 결석·활동 제한·기록/심판인 학생은 <b>참여</b> 칸을 바꾸면 편성에서 빠지고, 다시 "참여"로 바꾸면 원래 팀으로 돌아옵니다.</p>
+      <p class="desc simple-only">성별은 <b>남·여 버튼</b>을 한 번 누르면 됩니다. 한쪽 성별만 먼저 누르고 표 아래 <b>빈칸 모두 남/여</b>로 나머지를 한 번에 채울 수 있습니다. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다. PAPS 기록과 실제 수행 능력의 차이가 큰 학생은 <b>PAPS 총점</b> 칸의 숫자를 직접 고칠 수 있습니다(<span class="badge warn">교사 수정</span> 표시, ↺로 원래 점수 복원). 오늘 결석·활동 제한·기록/심판인 학생은 <b>참여</b> 칸을 바꾸면 편성에서 빠지고, 다시 "참여"로 바꾸면 원래 팀으로 돌아옵니다.</p>
       <p class="desc adv">PAPS 점수는 공식 기준표(학교건강검사규칙 별표 4·5)로 종목당 0~20점을 매겨 5영역 합계 <b>100점 만점</b>으로 계산합니다(성별·학년 필요). 성별이 없으면 학급 내 상대점수(<span class="badge warn">상대</span>)로, 자료가 없으면 학급 평균(<span class="badge warn">대체</span>)으로 채워 편성에 포함합니다. 원기록이 없는 학생은 PAPS 총점/등급을, 32문항이 없는 학생은 4덕목 점수를 직접 입력할 수 있습니다. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다. 기록과 실제 수행 능력의 차이가 큰 학생은 <b>PAPS 총점 칸의 숫자를 직접 고치면</b> 그 점수(<span class="badge warn">교사 수정</span>)로 편성하며, 칸을 비우거나 ↺를 누르면 원래 점수로 돌아갑니다. 파일을 다시 올려도 수정한 점수는 유지됩니다.</p>
       <div class="table-wrap">
         <table class="roster" id="roster-table">
@@ -115,6 +115,14 @@
           </thead>
           <tbody id="roster-body"></tbody>
         </table>
+      </div>
+      <!-- 성별 한 번에 넣기: 빈칸이 있는 동안 화면 아래에 붙어 따라다님 -->
+      <div id="gender-tools" class="gender-tools no-print" hidden>
+        <b id="gender-tools-msg" class="gt-msg"></b>
+        <button id="btn-gfill-m" class="btn small" type="button" title="성별이 비어 있는 학생을 모두 남학생으로 채웁니다 (이미 넣은 학생은 그대로)">빈칸 모두 <b>남</b></button>
+        <button id="btn-gfill-f" class="btn small" type="button" title="성별이 비어 있는 학생을 모두 여학생으로 채웁니다 (이미 넣은 학생은 그대로)">빈칸 모두 <b>여</b></button>
+        <button id="btn-gconfirm" class="btn small" type="button" title="추정으로 표시된 성별을 지금 그대로 확정합니다">추정 그대로 확정</button>
+        <span id="gender-tools-hint" class="hint"></span>
       </div>
     </section>
 
@@ -300,9 +308,9 @@
   <script src="js/parse.js?v=5"></script>
   <script src="js/state.js?v=8"></script>
   <script src="js/export.js?v=8"></script>
-  <script src="js/ui.js?v=21"></script>
+  <script src="js/ui.js?v=22"></script>
   <script src="js/print.js?v=1"></script>
-  <script src="js/wizard.js?v=2"></script>
+  <script src="js/wizard.js?v=3"></script>
   <script src="js/app.js?v=4"></script>
 </body>
 </html>
