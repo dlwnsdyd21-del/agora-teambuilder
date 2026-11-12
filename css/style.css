@@ -284,6 +284,8 @@ dialog.dialog h3 { font-size: 1.1rem; }
 .toast { position: fixed; left: 50%; bottom: 1.5rem; transform: translateX(-50%); background: #1b2430; color: #fff; padding: .6rem 1rem; border-radius: 10px; font-size: .9rem; z-index: 50; box-shadow: var(--shadow); max-width: 90vw; }
 .toast.error { background: var(--danger); }
 
+.privacy-note { margin: .2rem 0 .8rem; padding: .55rem .8rem; border-radius: 10px; background: #f1f7f3; border: 1px solid #cfe6d8; color: #23533a; font-size: .92rem; line-height: 1.55; }
+
 /* ---------- 단계별 화면 (wizard.js) ---------- */
 body.wizard main > section.card { display: none; }
 body.wizard main > section.card.step-active { display: block; animation: stepIn .25s ease-out; }

@@ -116,6 +116,18 @@
   function canUndo() { return state.undo.length > 0; }
 
   function reset() { pushUndo(); state.session = newSession(); save(); emit(); }
+  /* 이 브라우저에 저장된 이 앱의 모든 자료(현재 화면·저장된 학급·화면 설정)를 지움. 되돌리기 기록도 비움 */
+  function wipeAll() {
+    clearTimeout(state.saveTimer);
+    try {
+      var ls = root.localStorage, keys = [];
+      for (var i = 0; ls && i < ls.length; i++) { var k = ls.key(i); if (k && k.indexOf('agora.') === 0) keys.push(k); }
+      keys.forEach(function (k) { ls.removeItem(k); });
+    } catch (e) { /* ignore */ }
+    try { root.sessionStorage && root.sessionStorage.clear(); } catch (e) { /* ignore */ }
+    state.undo = [];
+    state.session = newSession();
+  }
   function replace(obj) { pushUndo(); state.session = hydrate(obj); save(); emit(); }
 
   function onChange(fn) { state.listeners.push(fn); }
@@ -205,7 +217,7 @@
 
   var api = {
     KEY: KEY, DEFAULT_OPTIONS: DEFAULT_OPTIONS, newSession: newSession, hydrate: hydrate, load: load, get: get, update: update,
-    undo: undo, canUndo: canUndo, reset: reset, replace: replace, onChange: onChange, persistNow: persistNow,
+    undo: undo, canUndo: canUndo, reset: reset, wipeAll: wipeAll, replace: replace, onChange: onChange, persistNow: persistNow,
     exportJSON: exportJSON, importJSON: importJSON,
     STATUS_LABEL: STATUS_LABEL, isActive: isActive, activeStudents: activeStudents, inactiveStudents: inactiveStudents,
     listSaved: listSaved, saveAs: saveAs, loadSaved: loadSaved, deleteSaved: deleteSaved, getSaved: getSaved, putSaved: putSaved,

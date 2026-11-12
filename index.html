@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1f6feb">
   <title>PAPS + 인성 AI 팀빌딩</title>
   <link rel="icon" type="image/png" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="css/style.css?v=19">
+  <link rel="stylesheet" href="css/style.css?v=20">
 </head>
 <body>
   <header class="topbar">
@@ -25,7 +25,8 @@
       <button id="btn-save-class" class="btn" title="현재 자료·설정·결과를 학급 이름으로 이 브라우저에 보관">학급 저장</button>
       <button id="btn-del-class" class="btn ghost adv" title="현재 학급의 저장본 삭제">저장본 삭제</button></span>
       <button id="btn-undo" class="btn ghost">되돌리기</button>
-      <button id="btn-reset" class="btn ghost danger">새로 시작</button>
+      <button id="btn-reset" class="btn ghost danger" title="현재 화면의 학급만 비웁니다 (저장된 다른 학급은 남음)">새로 시작</button>
+      <button id="btn-wipe" class="btn ghost danger" title="이 컴퓨터(이 브라우저)에 저장된 모든 학급 자료를 완전히 지웁니다. 공용 컴퓨터에서 사용한 뒤 누르세요">🧹 자료 모두 지우기</button>
     </div>
     <label class="switch teacher-only" title="세부 설정·차트·엑셀 내보내기까지 모두 보여줍니다">
       <input type="checkbox" id="detail-toggle"><span>자세히 보기</span>
@@ -47,6 +48,7 @@
     <!-- 1. 데이터 불러오기 -->
     <section id="sec-import" class="card teacher-only">
       <h2>1. 데이터 불러오기</h2>
+      <p class="privacy-note">🔒 올린 자료는 인터넷으로 보내지지 않고 <b>지금 쓰는 컴퓨터의 이 브라우저에만</b> 저장됩니다. 다른 컴퓨터에서는 보이지 않지만, 같은 컴퓨터를 쓰는 사람에게는 보일 수 있으니 <b>공용 컴퓨터에서는 사용 후 위쪽 "🧹 자료 모두 지우기"</b>를 눌러 주세요.</p>
       <p class="desc simple-only">나이스 "학급별건강체력평가조회" 파일과 구글폼 응답 파일을 올리면 바로 명단이 만들어집니다. 한 화면은 <b>한 학급</b>입니다 — 여러 반이 든 파일은 반 목록이 떠서 반을 고르거나 모든 반을 각각 저장할 수 있고, 다른 반은 상단 <b>학급 전환</b>으로 바꿔 가며 편성합니다.</p>
       <p class="desc adv">PAPS 자료와 인성 설문 자료를 각각 올리면 열을 자동으로 읽어 <b>바로 명단에 반영</b>하고, 같은 학급 안에서 <b>번호</b>(없으면 이름) 기준으로 합칩니다. 학번(10130 = 1학년 1반 30번)·반 열·시트 이름에서 반을 읽어 <b>현재 학급과 맞는 반만</b> 들어오고, 다른 반은 제외되거나 반 목록에서 고릅니다. 인식이 애매하거나 시트가 여러 개일 때만 확인 패널이 뜹니다. 반영 뒤에는 건너뛴 행·번호 중복·이름 불일치 등 검증 결과가 함께 표시됩니다.</p>
       <div class="import-grid">
@@ -306,9 +308,9 @@
   <script src="js/scoring.js?v=5"></script>
   <script src="js/algorithm.js?v=7"></script>
   <script src="js/parse.js?v=5"></script>
-  <script src="js/state.js?v=8"></script>
+  <script src="js/state.js?v=9"></script>
   <script src="js/export.js?v=8"></script>
-  <script src="js/ui.js?v=22"></script>
+  <script src="js/ui.js?v=23"></script>
   <script src="js/print.js?v=1"></script>
   <script src="js/wizard.js?v=3"></script>
   <script src="js/app.js?v=4"></script>

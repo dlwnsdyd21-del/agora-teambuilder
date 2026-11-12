@@ -9,9 +9,19 @@ const A = require(path.join(__dirname, '..', 'js', 'algorithm.js'));
 const P = require(path.join(__dirname, '..', 'js', 'parse.js'));
 
 let passed = 0, failed = 0;
+let skipped = 0;
+/* 예시(가명) 파일은 개인정보 보호를 위해 저장소에 올리지 않음 — 이 컴퓨터의 sample/ 에 있을 때만 검사 */
+function sampleOrSkip(name) {
+  const f = path.join(__dirname, '..', 'sample', name);
+  if (!require('fs').existsSync(f)) { const e = new Error('SKIP'); e.skip = name; throw e; }
+  return f;
+}
 function test(name, fn) {
   try { fn(); passed++; console.log('  ok   ' + name); }
-  catch (e) { failed++; console.log('  FAIL ' + name + '\n       ' + (e && e.message)); }
+  catch (e) {
+    if (e && e.skip) { skipped++; console.log('  skip ' + name + ' (sample/' + e.skip + ' 없음)'); return; }
+    failed++; console.log('  FAIL ' + name + '\n       ' + (e && e.message));
+  }
 }
 function approx(a, b, eps) { assert.ok(Math.abs(a - b) <= (eps || 1e-9), `${a} ≠ ${b}`); }
 
@@ -399,7 +409,7 @@ test('extractReport: 여러 반 묶음, 오류 행 사유, 번호 중복, 반 �
 test('구글폼 10개 반 330명 샘플: 반별 묶음·오류 행·중복·반 미상 보고', () => {
   const XLSX = require(path.join(__dirname, '..', 'vendor', 'xlsx.full.min.js'));
   const fs = require('fs');
-  const wb = XLSX.read(fs.readFileSync(path.join(__dirname, '..', 'sample', '인성설문_구글폼응답_10개반_330명.xlsx')), { type: 'buffer' });
+  const wb = XLSX.read(fs.readFileSync(sampleOrSkip('인성설문_구글폼응답_10개반_330명.xlsx')), { type: 'buffer' });
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null, blankrows: false });
   const det = P.detectTable(rows);
   assert.deepStrictEqual(det.warnings, []);
@@ -427,7 +437,7 @@ test('state: 참여 상태 (결석·활동 제한·기록/심판 제외)', () =>
 test('나이스 학급별건강체력평가조회 양식: 2줄 헤더·반복 헤더·영역 점수·성별/학년 추정', () => {
   const XLSX = require(path.join(__dirname, '..', 'vendor', 'xlsx.full.min.js'));
   const fs = require('fs');
-  const wb = XLSX.read(fs.readFileSync(path.join(__dirname, '..', 'sample', '나이스_건강체력평가조회_샘플.xlsx')), { type: 'buffer' });
+  const wb = XLSX.read(fs.readFileSync(sampleOrSkip('나이스_건강체력평가조회_샘플.xlsx')), { type: 'buffer' });
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null, blankrows: false });
   const det = P.detectTable(rows);
   assert.strictEqual(det.headerRow, 4); assert.ok(det.meta.twoRowHeader && det.meta.neis);
@@ -457,7 +467,7 @@ test('나이스 학급별건강체력평가조회 양식: 2줄 헤더·반복 �
 test('구글폼 응답 양식: 학번·객관식 글자 응답 → 번호·이름·학년·1~5점', () => {
   const XLSX = require(path.join(__dirname, '..', 'vendor', 'xlsx.full.min.js'));
   const fs = require('fs');
-  const wb = XLSX.read(fs.readFileSync(path.join(__dirname, '..', 'sample', '인성설문_구글폼응답_샘플.xlsx')), { type: 'buffer' });
+  const wb = XLSX.read(fs.readFileSync(sampleOrSkip('인성설문_구글폼응답_샘플.xlsx')), { type: 'buffer' });
   const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null, blankrows: false });
   const det = P.detectTable(rows);
   assert.strictEqual(det.mapping.hakbun, 2); assert.strictEqual(det.mapping.itemCount, 32); assert.deepStrictEqual(det.warnings, []);
@@ -771,5 +781,5 @@ test('state: 학급 목록 순서 바꾸기(위·아래·이름순·끌어 놓�
   assert.notStrictEqual(old.options.captains, St.DEFAULT_OPTIONS.captains, '기본값 객체를 공유하지 않음');
 });
 
-console.log(`\n${passed} passed, ${failed} failed`);
+console.log(`\n${passed} passed, ${failed} failed` + (skipped ? `, ${skipped} skipped (예시 파일 없음)` : ''));
 process.exit(failed ? 1 : 0);

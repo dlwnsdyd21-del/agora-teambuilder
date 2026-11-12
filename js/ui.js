@@ -1633,8 +1633,14 @@
       if (lbl && confirm('"' + lbl + '" 학급 저장본을 삭제할까요? (현재 화면의 자료는 그대로 남습니다)')) { St.deleteSaved(lbl); render(); toast('저장본을 삭제했습니다.'); }
     });
     $('#btn-undo').addEventListener('click', function () { if (!St.undo()) toast('되돌릴 작업이 없습니다.'); });
+    $('#btn-wipe').addEventListener('click', function () {
+      var n = St.listSaved().length, cur = St.get().students.length;
+      if (!confirm('이 컴퓨터(이 브라우저)에 저장된 팀빌딩 자료를 모두 지울까요?\n\n· 현재 화면 ' + cur + '명\n· 저장된 학급 ' + n + '개\n\n지운 자료는 되돌릴 수 없습니다. 필요한 자료는 먼저 내보내기(세션 파일 저장)로 보관하세요.')) return;
+      St.wipeAll();
+      location.replace(location.pathname);   // 화면·메모리에 남은 자료까지 비우도록 새로 열기
+    });
     $('#btn-reset').addEventListener('click', function () {
-      if (confirm('현재 자료·설정·결과를 모두 지우고 새로 시작할까요? (되돌리기 가능)')) { pending = { paps: null, survey: null }; clear($('#map-paps')); clear($('#map-survey')); St.reset(); }
+      if (confirm('현재 화면의 학급 자료·설정·결과를 지우고 새로 시작할까요? (되돌리기 가능)\n저장된 다른 학급까지 모두 지우려면 "자료 모두 지우기"를 쓰세요.')) { pending = { paps: null, survey: null }; clear($('#map-paps')); clear($('#map-survey')); St.reset(); }
     });
     document.addEventListener('keydown', function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !/input|textarea|select/i.test(document.activeElement.tagName)) { e.preventDefault(); St.undo(); }
