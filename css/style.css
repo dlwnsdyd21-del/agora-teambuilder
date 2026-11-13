@@ -201,11 +201,36 @@ table.roster td.num .btn.small { padding: .05rem .35rem; margin-left: .1rem; ver
 .radio .hint { font-size: .84rem; }
 
 /* ---------- 결과 ---------- */
-.result-summary { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; margin: .3rem 0 .8rem; }
-.equity { display: flex; align-items: center; gap: .6rem; padding: .5rem .8rem; border-radius: 10px; background: #f2f5fa; }
-.equity .score { font-size: 1.7rem; font-weight: 800; color: var(--accent); }
-.equity .label { font-size: .86rem; color: var(--muted); }
-.kv { font-size: .86rem; color: var(--muted); }
+.result-summary { margin: .3rem 0 .8rem; }
+/* 한눈에 보는 판정: 얼굴 · 문장 · 네 칸 눈금 (숫자 없음) */
+.verdict { display: flex; gap: .7rem 1rem; align-items: center; flex-wrap: wrap; padding: .85rem 1rem; border-radius: 12px; border: 1px solid var(--line); background: #f7f9fc; margin-bottom: .5rem; }
+.verdict .face { flex: none; font-size: 2.5rem; line-height: 1; }
+.verdict .vd-body { flex: 1 1 20rem; min-width: 0; }
+.verdict .vd-title { font-size: 1.25rem; font-weight: 800; line-height: 1.3; }
+.verdict .vd-text { margin: .15rem 0 0; color: var(--muted); }
+.verdict.lv3 { background: #e9f7ef; border-color: #b9e3cb; }
+.verdict.lv3 .vd-title { color: #17734a; }
+.verdict.lv2 { background: #eaf2ff; border-color: #c4d9fb; }
+.verdict.lv2 .vd-title { color: #1c59b8; }
+.verdict.lv1 { background: #fff7e0; border-color: #ecd9a0; }
+.verdict.lv1 .vd-title { color: #8a5a00; }
+.verdict.lv0 { background: #fdecea; border-color: #f1c1bb; }
+.verdict.lv0 .vd-title { color: #a5281b; }
+.meter { flex: 1 1 17rem; max-width: 24rem; display: grid; grid-template-columns: repeat(4, 1fr); gap: .3rem; }
+.meter span { text-align: center; font-size: .82rem; padding: .35rem .2rem; border-radius: 8px; background: #fff; color: #a3aebb; border: 1px solid var(--line); white-space: nowrap; }
+.meter span.on { color: #fff; font-weight: 800; border-color: transparent; box-shadow: 0 2px 8px rgba(16, 24, 40, .2); transform: scale(1.07); }
+.meter .s0.on { background: #c0392b; }
+.meter .s1.on { background: #b7791f; }
+.meter .s2.on { background: #2e86de; }
+.meter .s3.on { background: #1e8e5a; }
+/* 항목별 판정 말 */
+.vchip { display: inline-block; font-size: .86rem; font-weight: 700; padding: .14rem .65rem; border-radius: 999px; white-space: nowrap; }
+.vchip.v3 { background: #dff3e8; color: #17734a; }
+.vchip.v2 { background: #e1edff; color: #1c59b8; }
+.vchip.v1 { background: #fff0c7; color: #8a5a00; }
+.vchip.v0 { background: #fde0dc; color: #a5281b; }
+.vchip.vx { background: #eef1f5; color: #7a8696; }
+.kv { font-size: .88rem; color: var(--muted); }
 .kv b { color: var(--ink); }
 .log { font-size: .84rem; color: var(--warn-ink); background: var(--warn-bg); border-radius: 8px; padding: .4rem .7rem; margin-bottom: .6rem; }
 .teams-grid { display: grid; grid-template-columns: repeat(var(--cols, auto-fill), minmax(210px, 1fr)); gap: .8rem; }   /* --cols 는 ui.js 가 폭을 재서 정함 */
@@ -214,8 +239,6 @@ table.roster td.num .btn.small { padding: .05rem .35rem; margin-left: .1rem; ver
 .team-head { padding: .5rem .7rem; color: #fff; display: flex; justify-content: space-between; align-items: baseline; gap: .4rem; }
 .team-head h3 { margin: 0; font-size: 1rem; }
 .team-head .meta { font-size: .84rem; opacity: .92; white-space: nowrap; }
-.team-stats { display: flex; gap: .3rem .6rem; flex-wrap: wrap; padding: .4rem .6rem; font-size: .82rem; color: var(--muted); border-bottom: 1px solid #eef1f5; background: #fbfcfe; }
-.team-stats span b { color: var(--ink); font-weight: 600; }
 .members { list-style: none; margin: 0; padding: .45rem .5rem .55rem; min-height: 2.4rem; display: flex; flex-direction: column; gap: .25rem; }
 .member {
   display: flex; align-items: center; gap: .4rem; padding: .3rem .5rem; border-radius: 8px;
@@ -227,7 +250,6 @@ table.roster td.num .btn.small { padding: .05rem .35rem; margin-left: .1rem; ver
 .member .g { font-size: .78rem; padding: 0 .35rem; border-radius: 999px; background: #e9eef6; color: var(--muted); }
 .member .g.m { background: #e3ecff; color: #1f4fa3; }
 .member .g.f { background: #ffe4ec; color: #a3244b; }
-.member .sc { margin-left: auto; font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .member .pin { font-size: .8rem; }
 .member.captain { background: #fff8e1; box-shadow: inset 0 0 0 1px #ecd9a0; flex-wrap: wrap; row-gap: 0; }   /* 좁으면 점수만 다음 줄로 */
 .member.captain .nm { white-space: nowrap; }
@@ -261,16 +283,48 @@ dialog.dialog h3 { font-size: 1.1rem; }
 .order-list .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dialog-actions { justify-content: space-between; }
 
-.balance { margin-top: 1rem; overflow: auto; }
-.balance table { border-collapse: collapse; width: 100%; font-size: .86rem; }
-.balance th, .balance td { padding: .3rem .5rem; border-bottom: 1px solid #eef1f5; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.balance th { background: #f2f5fa; }
-.balance tr.foot td { background: #fbfcfe; font-weight: 600; }
-.balance td.tn { text-align: left; font-weight: 600; }
-.balance .dot { display: inline-block; width: .7em; height: .7em; border-radius: 50%; margin-right: .35em; vertical-align: -1px; }
+/* 팀 균형 그림: 항목마다 한 줄 — 색 점(팀 평균)이 초록 띠 안에 모이면 비슷한 것 */
+.balance { margin-top: 1.1rem; display: flex; flex-direction: column; gap: .9rem; }
+.bal-fig { border: 1px solid var(--line); border-radius: 12px; padding: .9rem 1rem 1rem; background: #fff; }
+.bal-fig > h3 { font-size: 1.1rem; }
+.bal-how { margin: .2rem 0 .8rem; color: var(--muted); font-size: .95rem; max-width: 60rem; }
+.bal-how b { color: var(--ink); }
+.bal-how .band-word { background: rgba(30, 142, 90, .2); color: #17734a; border-radius: 5px; padding: 0 .3em; }
+.bal-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.2rem; }
+@media (min-width: 960px) { .bal-grid { grid-template-columns: minmax(0, 2.3fr) minmax(230px, 1fr); } }
+.bal-rows { display: flex; flex-direction: column; gap: .4rem; }
+.bal-row { display: grid; grid-template-columns: 8.4em minmax(0, 1fr) 5.8em; align-items: center; gap: .7rem; }
+.bal-name b { display: block; font-size: 1rem; white-space: nowrap; }
+.bal-name span { font-size: .8rem; color: var(--muted); white-space: nowrap; }
+.bal-track { position: relative; height: 60px; border-radius: 10px; background: #f3f5f9; overflow: hidden; }
+.bal-track > i { position: absolute; display: block; }
+.bal-band { top: 0; bottom: 0; background: rgba(30, 142, 90, .2); border-left: 1px solid rgba(30, 142, 90, .4); border-right: 1px solid rgba(30, 142, 90, .4); }
+.bal-mean { top: 0; bottom: 0; width: 0; border-left: 2px dashed rgba(30, 142, 90, .75); margin-left: -1px; }
+.bal-stu { width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px; border-radius: 50%; background: #64748b; opacity: .3; }
+.bal-dot { width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 1px 3px rgba(16, 24, 40, .4); }
+.bal-ends { display: flex; justify-content: space-between; font-size: .78rem; color: #8a97a8; }
+.bal-verdict { text-align: right; }
+.bal-legend { display: flex; flex-wrap: wrap; gap: .3rem 1rem; margin-top: .6rem; font-size: .86rem; color: var(--muted); }
+.bal-legend i { display: inline-block; width: .9em; height: .9em; margin-right: .35em; vertical-align: -1px; border-radius: 3px; }
+.bal-legend .lg-band { background: rgba(30, 142, 90, .25); border: 1px solid rgba(30, 142, 90, .45); }
+.bal-legend .lg-mean { width: 0; height: 1em; border-left: 2px dashed #1e8e5a; border-radius: 0; margin-left: .35em; }
+.bal-legend .lg-stu { width: .45em; height: .45em; border-radius: 50%; background: #64748b; opacity: .45; vertical-align: 1px; }
+.bal-legend .lg-m, .comp-people i.m { background: #5b8def; }
+.bal-legend .lg-f, .comp-people i.f { background: #ef7fa6; }
+.bal-legend .lg-u, .comp-people i { background: #c5cedb; }
+.bal-note { margin: .5rem 0 0; font-size: .86rem; color: var(--muted); }
+.comp-box { border-left: 1px solid var(--line); padding-left: 1.1rem; min-width: 0; }
+.comp-box h4 { font-size: .98rem; margin-bottom: .5rem; }
+.comp { display: flex; flex-direction: column; gap: .35rem; }
+.comp-row { display: grid; grid-template-columns: 6.5em minmax(0, 1fr) auto; align-items: center; gap: .5rem; font-size: .92rem; }
+.comp-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comp-name .dot { display: inline-block; width: .7em; height: .7em; border-radius: 50%; margin-right: .35em; vertical-align: -1px; }
+.comp-people { display: flex; flex-wrap: wrap; gap: 3px; }
+.comp-people i { display: block; width: 13px; height: 18px; border-radius: 6px 6px 3px 3px; }
+.comp-n { color: var(--muted); font-size: .86rem; white-space: nowrap; }
+@media (max-width: 959px) { .comp-box { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: .9rem; } }
 
-.charts { display: grid; grid-template-columns: 1fr; gap: 1rem; margin-top: 1rem; }
-@media (min-width: 900px) { .charts { grid-template-columns: 3fr 2fr; } }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 420px)); gap: 1rem; margin-top: 1rem; }
 .chart { border: 1px solid var(--line); border-radius: 10px; padding: .6rem .8rem; background: #fff; }
 .chart h4 { font-size: .92rem; margin-bottom: .3rem; }
 .chart svg { width: 100%; height: auto; display: block; }
@@ -286,9 +340,38 @@ dialog.dialog h3 { font-size: 1.1rem; }
 
 .privacy-note { margin: .2rem 0 .8rem; padding: .55rem .8rem; border-radius: 10px; background: #f1f7f3; border: 1px solid #cfe6d8; color: #23533a; font-size: .92rem; line-height: 1.55; }
 
+/* ---------- 첫 화면 소개: 이렇게 팀을 나누는 이유 · 기대 효과 ---------- */
+.intro { background: linear-gradient(135deg, #eef4ff 0%, #f3fbf6 100%); border-color: #c9dbff; }
+.intro, .verdict, .bal-fig { word-break: keep-all; }   /* 설명 글은 낱말 단위로 줄바꿈 */
+.intro summary { display: flex; align-items: center; justify-content: space-between; gap: .8rem; cursor: pointer; list-style: none; }
+.intro summary::-webkit-details-marker { display: none; }
+.intro-title { font-size: 1.3rem; font-weight: 800; line-height: 1.35; }
+.intro-title b { color: var(--accent); }
+.intro-toggle { flex: none; font-size: .86rem; color: var(--muted); border: 1px solid #c9dbff; background: #fff; border-radius: 999px; padding: .2rem .75rem; white-space: nowrap; }
+.intro-toggle::after { content: '펼치기 ▼'; }
+.intro details[open] .intro-toggle::after { content: '접기 ▲'; }
+.intro-lead { margin: .7rem 0 .9rem; font-size: 1rem; max-width: 64rem; }
+.intro-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: .9rem; }
+.intro-col { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: .85rem .95rem; }
+.intro-col h3 { display: inline-block; font-size: .92rem; padding: .15rem .75rem; border-radius: 999px; margin-bottom: .7rem; }
+.intro-col.why h3 { background: #fde8e6; color: #a5281b; }
+.intro-col.effect h3 { background: #dff3e8; color: #17734a; }
+.intro-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .7rem; }
+.intro-col li { display: flex; gap: .7rem; align-items: flex-start; }
+.intro-col .ic { flex: none; width: 2.4rem; height: 2.4rem; display: grid; place-items: center; font-size: 1.3rem; border-radius: 50%; background: #f2f5fa; }
+.intro-col li b { display: block; font-size: 1rem; }
+.intro-col li p { margin: .1rem 0 0; color: var(--muted); font-size: .9rem; }
+.intro-flow { list-style: none; margin: .9rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .5rem; }
+.intro-flow li { background: #fff; border: 1px solid #c9dbff; border-radius: 10px; padding: .5rem .75rem; }
+.intro-flow b { display: block; color: var(--accent); font-size: .95rem; }
+.intro-flow span { font-size: .86rem; color: var(--muted); }
+.intro-foot { margin: .8rem 0 0; font-size: .9rem; color: var(--muted); }
+.intro-foot b { color: var(--ink); }
+
 /* ---------- 단계별 화면 (wizard.js) ---------- */
 body.wizard main > section.card { display: none; }
 body.wizard main > section.card.step-active { display: block; animation: stepIn .25s ease-out; }
+body.wizard main:has(> #sec-import.step-active) > #sec-intro { display: block; }   /* 소개는 첫 단계에서만 */
 body.wizard.student-view main > #sec-result { display: block; }   /* 학생용 보기는 결과만 */
 @keyframes stepIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 nav.steps { align-items: center; justify-content: space-between; max-width: 1240px; margin: 0 auto; width: 100%; }
@@ -321,7 +404,6 @@ body:not(.simple) .simple-only { display: none !important; }
 
 /* ---------- 학생용 보기 ---------- */
 body.student-view .teacher-only { display: none !important; }
-body.student-view .member .sc, body.student-view .team-stats { display: none !important; }
 body.student-view .member { cursor: default; }
 body.student-view main { padding-top: 1rem; }
 
@@ -340,8 +422,8 @@ body.student-view main { padding-top: 1rem; }
   .team { break-inside: avoid; }
   .team-head { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .member { background: #f3f3f3; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .member .sc, .team-stats { display: none !important; }
   .balance { margin-top: .6rem; }
+  .bal-fig, .verdict { break-inside: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 /* ============================================================
@@ -528,6 +610,18 @@ body.pv-open { overflow: hidden; }
   .team-row { grid-template-columns: 1fr; }
   .member { font-size: 1rem; padding: .45rem .6rem; }
   .team-head h3 { font-size: 1.1rem; }
-  .equity .score { font-size: 2rem; }
+  /* 소개 · 판정 · 균형 그림: 좁은 화면에서는 이름과 판정을 한 줄에, 그림은 그 아래 가득 */
+  .intro-title { font-size: 1.15rem; }
+  .verdict { padding: .75rem .8rem; }
+  .verdict .vd-title { font-size: 1.12rem; }
+  .meter { max-width: none; flex-basis: 100%; }
+  .meter span { font-size: .78rem; padding: .35rem .1rem; }
+  .bal-fig { padding: .8rem .75rem; }
+  .bal-row { grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .5rem; margin-bottom: .35rem; }
+  .bal-row .bal-track, .bal-row .bal-ends { grid-column: 1 / -1; grid-row: 2; }
+  .bal-row.bal-axis { margin-bottom: 0; }
+  .bal-row.bal-axis > span { display: none; }
+  .bal-row.bal-axis .bal-ends { grid-row: 1; }
+  .bal-name { display: flex; align-items: baseline; gap: .45rem; }
   .export-grid { grid-template-columns: 1fr; }
 }

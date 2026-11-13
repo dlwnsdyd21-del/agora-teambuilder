@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#1f6feb">
   <title>PAPS + 인성 AI 팀빌딩</title>
   <link rel="icon" type="image/png" href="assets/favicon-64.png">
-  <link rel="stylesheet" href="css/style.css?v=20">
+  <link rel="stylesheet" href="css/style.css?v=21">
 </head>
 <body>
   <header class="topbar">
@@ -45,6 +45,42 @@
   </nav>
 
   <main>
+    <!-- 첫 화면 소개: 이렇게 팀을 나누는 이유와 기대 효과 (1단계에서만 보이고, 접어 둘 수 있음) -->
+    <section id="sec-intro" class="card intro teacher-only no-print">
+      <details id="intro-box" open>
+        <summary>
+          <span class="intro-title">왜 <b>체력</b>과 <b>인성</b>으로 팀을 나눌까요?</span>
+          <span class="intro-toggle" aria-hidden="true"></span>
+        </summary>
+        <p class="intro-lead">체육 시간의 팀이 친한 친구끼리, 또는 잘하는 학생 위주로 짜이면 늘 같은 학생이 소외되고 경기는 한쪽으로 기웁니다. 이 프로그램은 <b>체력(PAPS)</b>과 <b>스포츠 인성(성실·협동·정의·배려)</b> 기록을 함께 보고, 어느 팀이든 비슷하도록 나눕니다.</p>
+        <div class="intro-grid">
+          <div class="intro-col why">
+            <h3>이렇게 하는 이유</h3>
+            <ul>
+              <li><span class="ic">🙁</span><div><b>늘 같은 학생이 소외됩니다</b><p>친분이나 "운동을 못한다"는 고정관념으로 팀을 짜면, 끝까지 뽑히지 않는 학생이 생깁니다.</p></div></li>
+              <li><span class="ic">📉</span><div><b>기운 팀은 참여를 줄입니다</b><p>잘하는 학생이 한 팀에 몰리면 승부가 뻔해지고, 경기에 끼려는 마음이 줄어듭니다.</p></div></li>
+              <li><span class="ic">🧮</span><div><b>손으로 맞추기는 어렵습니다</b><p>체력과 인성 네 가지를 한꺼번에 고르게 맞추는 일은 수업 직전에 손으로 하기 어렵습니다.</p></div></li>
+            </ul>
+          </div>
+          <div class="intro-col effect">
+            <h3>기대하는 효과</h3>
+            <ul>
+              <li><span class="ic">🙌</span><div><b>모든 학생이 경기에 참여합니다</b><p>어느 팀이든 수준이 비슷해서, 누구에게나 뛸 자리와 기회가 생깁니다.</p></div></li>
+              <li><span class="ic">🤝</span><div><b>체력도 인성도 고른 팀이 됩니다</b><p>팀마다 힘이 되는 학생과 분위기를 이끄는 학생이 골고루 들어가 협력이 쉬워집니다.</p></div></li>
+              <li><span class="ic">📋</span><div><b>편성 이유를 설명할 수 있습니다</b><p>기록을 근거로 나누므로 "왜 이 팀이에요?"라는 질문에 답할 수 있습니다.</p></div></li>
+            </ul>
+          </div>
+        </div>
+        <ol class="intro-flow" aria-label="편성 과정">
+          <li><b>① 기록 올리기</b><span>팝스 · 인성 설문 파일</span></li>
+          <li><b>② 체력으로 고르게</b><span>팀 평균 체력을 비슷하게</span></li>
+          <li><b>③ 인성으로 한 번 더</b><span>네 덕목도 비슷하게</span></li>
+          <li><b>④ 선생님이 확인</b><span>그림으로 보고 직접 수정</span></li>
+        </ol>
+        <p class="intro-foot">앱이 짠 팀은 <b>추천안</b>입니다. 결과 화면에서 학생을 옮겨 고칠 수 있고, 개인 점수는 학생에게 공개하지 않습니다. <span class="hint">프로젝트 아고라 · AI융합교육 교사연구회</span></p>
+      </details>
+    </section>
+
     <!-- 1. 데이터 불러오기 -->
     <section id="sec-import" class="card teacher-only">
       <h2>1. 데이터 불러오기</h2>
@@ -310,9 +346,9 @@
   <script src="js/parse.js?v=5"></script>
   <script src="js/state.js?v=9"></script>
   <script src="js/export.js?v=8"></script>
-  <script src="js/ui.js?v=23"></script>
+  <script src="js/ui.js?v=24"></script>
   <script src="js/print.js?v=1"></script>
-  <script src="js/wizard.js?v=3"></script>
+  <script src="js/wizard.js?v=4"></script>
   <script src="js/app.js?v=4"></script>
 </body>
 </html>
