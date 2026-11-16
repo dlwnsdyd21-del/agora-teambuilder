@@ -781,5 +781,37 @@ test('state: 학급 목록 순서 바꾸기(위·아래·이름순·끌어 놓�
   assert.notStrictEqual(old.options.captains, St.DEFAULT_OPTIONS.captains, '기본값 객체를 공유하지 않음');
 });
 
+test('state: 백업 파일 만들기·가져오기 (같은 이름은 덮어쓰고, 이 컴퓨터에만 있는 학급은 남김, 예전 세션 파일도 읽음)', () => {
+  const St = require(path.join(__dirname, '..', 'js', 'state.js'));
+  const store = {};
+  globalThis.localStorage = { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
+  const sess = (lbl, n) => Object.assign(St.newSession(), { classLabel: lbl, students: Array.from({ length: n }, (_, i) => ({ id: lbl + i, no: i + 1, name: 'x' + i })) });
+  try {
+    // "옛 컴퓨터": 학급 둘 + 현재 화면(저장 안 된 1-3) + 화면 설정
+    St.putSaved('1-1', sess('1-1', 3)); St.putSaved('1-2', sess('1-2', 2));
+    St.replace(sess('1-3', 4)); store['agora.ui.detail'] = '1';
+    const bk = JSON.parse(JSON.stringify(St.makeBackup()));
+    assert.strictEqual(bk.type, 'backup'); assert.strictEqual(bk.saved.length, 2); assert.strictEqual(bk.current.classLabel, '1-3');
+    assert.strictEqual(bk.prefs['agora.ui.detail'], '1');
+    // "새 컴퓨터": 1-1(다른 내용)과 2-1 이 이미 있음
+    Object.keys(store).forEach(k => delete store[k]);
+    St.wipeAll();
+    St.putSaved('1-1', sess('1-1', 9)); St.putSaved('2-1', sess('2-1', 5));
+    const r = St.readBackup(bk), sm = St.backupSummary(r);
+    assert.deepStrictEqual(sm.conflicts, ['1-1']); assert.ok(sm.currentUnsaved); assert.strictEqual(sm.students, 3 + 2 + 4);
+    St.restoreBackup(r);
+    const by = {}; St.listSaved().forEach(e => { by[e.label] = e.session.students.length; });
+    assert.deepStrictEqual(by, { '1-1': 3, '2-1': 5, '1-2': 2 }, '1-1 은 백업 내용, 2-1 은 그대로, 1-2 추가');
+    assert.strictEqual(St.get().classLabel, '1-3'); assert.strictEqual(St.get().students.length, 4);
+    assert.strictEqual(store['agora.ui.detail'], '1');
+    // 예전 세션 파일(학급 하나)도 가져오기
+    const one = St.readBackup(JSON.parse(JSON.stringify(sess('3-1', 6))));
+    assert.strictEqual(one.saved.length, 1); assert.strictEqual(St.backupSummary(one).conflicts.length, 0);
+    St.restoreBackup(one); assert.strictEqual(St.get().classLabel, '3-1');
+    assert.ok(St.listSaved().some(e => e.label === '1-3'), '가져오기 전 화면의 학급은 저장본으로 남음');
+    assert.throws(() => St.readBackup({ hello: 1 }), /백업 파일이 아닙니다/);
+  } finally { St.wipeAll(); delete globalThis.localStorage; }
+});
+
 console.log(`\n${passed} passed, ${failed} failed` + (skipped ? `, ${skipped} skipped (예시 파일 없음)` : ''));
 process.exit(failed ? 1 : 0);

@@ -143,6 +143,63 @@
     replace(obj);
   }
 
+  /* ---------- 백업 파일 (다른 컴퓨터로 옮기기) ----------
+   * 현재 화면 + 저장된 모든 학급 + 화면 설정을 한 파일로 */
+  var BACKUP_APP = 'agora-teambuilder';
+  var PREF_KEYS = ['agora.ui.detail', 'agora.ui.intro', 'agora.ui.print'];
+  function hasData(sess) { return !!(sess && Array.isArray(sess.students) && sess.students.length); }
+  function makeBackup() {
+    persistNow();
+    var prefs = {};
+    PREF_KEYS.forEach(function (k) { try { var v = root.localStorage && root.localStorage.getItem(k); if (v !== null && v !== undefined) prefs[k] = v; } catch (e) { /* ignore */ } });
+    return { app: BACKUP_APP, type: 'backup', version: 1, createdAt: new Date().toISOString(),
+      current: JSON.parse(JSON.stringify(state.session)), saved: listSaved(), prefs: prefs };
+  }
+  /* 파일 내용 확인: 백업 파일 또는 예전 세션 파일(학급 하나). 형식이 아니면 오류 */
+  function readBackup(obj) {
+    if (obj && obj.app === BACKUP_APP && obj.type === 'backup') {
+      if (!Array.isArray(obj.saved)) obj.saved = [];
+      obj.saved = obj.saved.filter(function (e) { return e && e.label && e.session && Array.isArray(e.session.students); });
+      if (obj.current && !Array.isArray(obj.current.students)) obj.current = null;
+      return obj;
+    }
+    if (obj && Array.isArray(obj.students)) {   // 세션 파일(.json) — 학급 하나
+      var lbl = String(obj.classLabel || '').trim();
+      return { app: BACKUP_APP, type: 'backup', version: 1, createdAt: obj.updatedAt || null, current: obj,
+        saved: lbl && obj.students.length ? [{ label: lbl, updatedAt: obj.updatedAt || null, session: obj }] : [], prefs: {}, fromSession: true };
+    }
+    throw new Error('팀빌딩 백업 파일이 아닙니다. 이 프로그램에서 만든 백업 파일(.json)을 올려 주세요.');
+  }
+  /* 가져오기 전 요약: 학급 목록, 이 컴퓨터에 이미 있는 같은 이름 학급 */
+  function backupSummary(bk) {
+    var have = {}; listSaved().forEach(function (e) { have[e.label] = true; });
+    var cur = state.session; if (cur.classLabel && hasData(cur)) have[cur.classLabel] = true;
+    var classes = bk.saved.map(function (e) { return { label: e.label, count: e.session.students.length, hasResult: !!e.session.result, exists: !!have[e.label] }; });
+    var curLbl = bk.current && bk.current.classLabel ? String(bk.current.classLabel).trim() : '';
+    var curUnsaved = !!(bk.current && hasData(bk.current) && !bk.saved.some(function (e) { return e.label === curLbl; }));
+    var students = classes.reduce(function (a, c) { return a + c.count; }, 0) + (curUnsaved ? bk.current.students.length : 0);
+    return { classes: classes, conflicts: classes.filter(function (c) { return c.exists; }).map(function (c) { return c.label; }),
+      currentLabel: curLbl, currentUnsaved: curUnsaved, students: students, createdAt: bk.createdAt,
+      localHasData: hasData(cur) || listSaved().length > 0 };
+  }
+  /* 가져오기: 같은 이름 학급은 백업 내용으로 바꾸고, 이 컴퓨터에만 있는 학급은 그대로 둠. 현재 화면은 백업의 현재 학급으로 (되돌리기 가능) */
+  function restoreBackup(bk) {
+    var cur = state.session;
+    if (cur.classLabel && hasData(cur)) putSaved(cur.classLabel, cur);   // 지금 화면의 학급을 먼저 보관
+    var arr = listSaved(), idx = {};
+    arr.forEach(function (e, i) { idx[e.label] = i; });
+    bk.saved.forEach(function (e) {
+      var entry = { label: String(e.label).trim(), updatedAt: e.updatedAt || new Date().toISOString(), session: hydrate(JSON.parse(JSON.stringify(e.session))) };
+      entry.session.classLabel = entry.label;
+      if (idx[entry.label] !== undefined) arr[idx[entry.label]] = entry; else { idx[entry.label] = arr.length; arr.push(entry); }
+    });
+    writeSaved(arr);
+    Object.keys(bk.prefs || {}).forEach(function (k) { if (PREF_KEYS.indexOf(k) >= 0) try { root.localStorage.setItem(k, String(bk.prefs[k])); } catch (e) { /* ignore */ } });
+    if (bk.current && (hasData(bk.current) || !hasData(cur))) replace(bk.current);
+    else emit();
+    return { classes: bk.saved.length, current: state.session.classLabel || '' };
+  }
+
   /* ---------- 학급별 보관 ---------- */
   function listSaved() {
     try {
@@ -219,6 +276,7 @@
     KEY: KEY, DEFAULT_OPTIONS: DEFAULT_OPTIONS, newSession: newSession, hydrate: hydrate, load: load, get: get, update: update,
     undo: undo, canUndo: canUndo, reset: reset, wipeAll: wipeAll, replace: replace, onChange: onChange, persistNow: persistNow,
     exportJSON: exportJSON, importJSON: importJSON,
+    makeBackup: makeBackup, readBackup: readBackup, backupSummary: backupSummary, restoreBackup: restoreBackup,
     STATUS_LABEL: STATUS_LABEL, isActive: isActive, activeStudents: activeStudents, inactiveStudents: inactiveStudents,
     listSaved: listSaved, saveAs: saveAs, loadSaved: loadSaved, deleteSaved: deleteSaved, getSaved: getSaved, putSaved: putSaved,
     moveSaved: moveSaved, sortSaved: sortSaved, reorderSaved: reorderSaved, compareLabels: compareLabels,

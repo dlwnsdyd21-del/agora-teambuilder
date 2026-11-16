@@ -1653,7 +1653,7 @@
     $('#btn-undo').addEventListener('click', function () { if (!St.undo()) toast('되돌릴 작업이 없습니다.'); });
     $('#btn-wipe').addEventListener('click', function () {
       var n = St.listSaved().length, cur = St.get().students.length;
-      if (!confirm('이 컴퓨터(이 브라우저)에 저장된 팀빌딩 자료를 모두 지울까요?\n\n· 현재 화면 ' + cur + '명\n· 저장된 학급 ' + n + '개\n\n지운 자료는 되돌릴 수 없습니다. 필요한 자료는 먼저 내보내기(세션 파일 저장)로 보관하세요.')) return;
+      if (!confirm('이 컴퓨터(이 브라우저)에 저장된 팀빌딩 자료를 모두 지울까요?\n\n· 현재 화면 ' + cur + '명\n· 저장된 학급 ' + n + '개\n\n지운 자료는 되돌릴 수 없습니다. 다른 컴퓨터에서 계속 쓰려면 먼저 "💾 백업 · 옮기기"로 백업 파일을 만들어 두세요.')) return;
       St.wipeAll();
       location.replace(location.pathname);   // 화면·메모리에 남은 자료까지 비우도록 새로 열기
     });

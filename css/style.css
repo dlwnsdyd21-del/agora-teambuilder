@@ -625,3 +625,23 @@ body.pv-open { overflow: hidden; }
   .bal-name { display: flex; align-items: baseline; gap: .45rem; }
   .export-grid { grid-template-columns: 1fr; }
 }
+
+/* ---- 백업 · 다른 컴퓨터로 옮기기 ---- */
+dialog.dialog.wide { width: min(36rem, calc(100vw - 2rem)); }
+.bk-sec { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .85rem; margin: .7rem 0; }
+.bk-sec h4 { margin: 0 0 .45rem; font-size: 1rem; }
+.bk-summary { margin: 0 0 .5rem; font-size: .92rem; }
+.bk-pw { display: flex; flex-wrap: wrap; gap: .4rem 1rem; margin-bottom: .35rem; }
+.bk-pw label, .bk-unlock label { display: inline-flex; align-items: center; gap: .35rem; flex-wrap: wrap; font-size: .92rem; }
+.bk-pw input, .bk-unlock input { padding: .35rem .5rem; border: 1px solid var(--line); border-radius: 8px; width: 11rem; max-width: 100%; }
+.bk-unlock { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .6rem; padding: .55rem .7rem; border-radius: 8px; background: #fff7e6; border: 1px solid #f5c26b; }
+.bk-preview { margin-top: .6rem; font-size: .92rem; }
+.bk-preview p { margin: 0 0 .4rem; }
+.bk-list { list-style: none; margin: 0 0 .6rem; padding: 0; display: flex; flex-direction: column; gap: .25rem; max-height: 14rem; overflow: auto; }
+.bk-list li { padding: .3rem .5rem; border: 1px solid var(--line); border-radius: 8px; }
+.bk-list li.over { border-color: #f5c26b; background: #fff7e6; }
+.bk-list .tag { font-size: .78rem; padding: .05rem .4rem; border-radius: 999px; background: #f5c26b; color: #5a3b00; }
+.bk-list .tag.new { background: #d7f5e3; color: #11643a; }
+.bk-msg { margin: .2rem 0 .4rem; padding: .45rem .7rem; border-radius: 8px; background: #eaf6ee; color: #11643a; font-size: .9rem; }
+.bk-msg.error { background: #fdecec; color: #a11d1d; }
+.linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
