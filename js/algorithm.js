@@ -499,7 +499,10 @@
     if (N < 2 * K) log.push('학생 수(' + N + ')가 팀 수의 2배보다 적어 팀당 인원이 매우 적습니다.');
     var impP = (inputStudents || []).filter(function (s) { return s.papsImputed; }).length;
     var impV = (inputStudents || []).filter(function (s) { return s.virtueImputed; }).length;
-    if (impP || impV) log.push('자료가 없어 학급 평균으로 채운 학생: PAPS ' + impP + '명 · 인성 ' + impV + '명 (균형 수치가 실제보다 좋게 보일 수 있음)');
+    var SC = root.AgoraScoring || (typeof require === 'function' ? require('./scoring.js') : null);
+    var fitName = SC && SC.fitnessLabel ? SC.fitnessLabel(options) : 'PAPS';
+    if (SC && SC.basisOf && SC.basisOf(options) !== 'paps') log.push('1차 균등 기준: ' + fitName + (SC.basisOf(options) === 'mix' ? ' (수행능력 ' + Math.round((options.skillWeight || 0) * 100) + '% + PAPS ' + Math.round((1 - (options.skillWeight || 0)) * 100) + '%)' : '') + ' — 이 점수의 팀 평균을 먼저 고르게 맞췄습니다.');
+    if (impP || impV) log.push('자료가 없어 학급 평균으로 채운 학생: ' + fitName + ' ' + impP + '명 · 인성 ' + impV + '명 (균형 수치가 실제보다 좋게 보일 수 있음)');
     var C = buildConstraints(students, options);
     log = log.concat(C.log);
     var counts = { 남: 0, 여: 0, 미상: 0 };

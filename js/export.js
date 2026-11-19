@@ -41,6 +41,7 @@
     var XLSX = root.XLSX;
     if (!XLSX) throw new Error('엑셀 라이브러리(SheetJS)를 불러오지 못했습니다.');
     opts = opts || {};
+    var Sc = root.AgoraScoring, FL = Sc.fitnessLabel(session.options), basis = Sc.basisOf(session.options);   // 1차 균등 기준 이름
     var byId = {};
     prepared.forEach(function (s) { byId[s.id] = s; });
     var A = root.AgoraAlgorithm;
@@ -93,7 +94,7 @@
       var bal = [];
       groups.forEach(function (g) {
         if (g.label) bal.push([g.label + ' (같은 성별 안에서 비교)']);
-        bal.push(['팀', '인원', '남', '여', 'PAPS 평균(100점 만점)'].concat(VK.map(function (k) { return k + ' 평균(5점 만점)'; })));
+        bal.push(['팀', '인원', '남', '여', FL + ' 평균(100점 만점)'].concat(VK.map(function (k) { return k + ' 평균(5점 만점)'; })));
         g.stats.teams.forEach(function (tm, j) {
           bal.push([teamName(g.idx[j]), tm.size, tm.male, tm.female, r2(tm.meanPaps)].concat(VK.map(function (k) { return r2(tm.meanVirtues[k]); })));
         });
@@ -106,9 +107,10 @@
       bal.push(['공정성 점수', opts.equity !== undefined ? opts.equity : stats.equity]);
       if (split) bal.push(['편성 단위', '남녀 따로 (남자 팀 ' + split['남'] + '개 · 여자 팀 ' + split['여'] + '개)']);
       var impP = prepared.filter(function (s) { return s.papsImputed; }).length, impV = prepared.filter(function (s) { return s.virtueImputed; }).length;
-      bal.push(['결측 대체(학급 평균으로 채움)', 'PAPS ' + impP + '명 · 인성 ' + impV + '명']);
+      bal.push(['결측 대체(학급 평균으로 채움)', FL + ' ' + impP + '명 · 인성 ' + impV + '명']);
       bal.push(['편성 시드', session.result ? session.result.seed : '']);
-      bal.push(['PAPS 허용편차(점)', session.options.papsTolerance]);
+      bal.push(['1차 균등 기준', FL + (basis === 'mix' ? ' (수행능력 ' + Math.round(session.options.skillWeight * 100) + '% + PAPS ' + Math.round((1 - session.options.skillWeight) * 100) + '%)' : '')]);
+      bal.push([FL + ' 허용편차(점)', session.options.papsTolerance]);
       bal.push(['PAPS 점수 기준', root.AgoraPapsTable ? root.AgoraPapsTable.SOURCE : '']);
       bal.push(['성별 균형', session.options.genderBalance ? '켬' : '끔']);
       bal.push(['학급', session.classLabel || '']);
@@ -124,16 +126,21 @@
     if (opts.includeScores) {
       var itemKeys = ['run', 'flex', 'situp', 'pushup', 'grip', 'jump', 'run50', 'bmi'];
       var T = root.AgoraPapsTable;
-      var sc = [['팀', '번호', '이름', '성별', 'PAPS 총점', 'PAPS 등급', 'PAPS 산출'].concat(itemKeys.map(function (k) { return T.ITEMS[k].label + ' 점수'; })).concat(VK).concat(['PAPS 대체', '인성 대체', 'PAPS 자료', '설문 자료'])];
+      var sport = session.options.sport || '', withSkill = basis !== 'paps' || !!(sport && (session.sports || []).length);
+      var sc = [['팀', '번호', '이름', '성별', 'PAPS 총점', 'PAPS 등급', 'PAPS 산출'].concat(itemKeys.map(function (k) { return T.ITEMS[k].label + ' 점수'; })).concat(VK).concat(['PAPS 대체', '인성 대체', 'PAPS 자료', '설문 자료'])
+        .concat(withSkill && sport ? [sport + ' 수행능력', sport + ' 대체'] : []).concat(basis === 'mix' ? [FL + ' 섞은 점수'] : [])];
       teams.forEach(function (ids, t) {
         ids.forEach(function (id) {
           var s = byId[id]; if (!s) return;
           var d = s.papsDetail || {};
           var srcLabel = { neis: '나이스 점수', official: '공식 기준표', relative: '학급 내 상대', given: '총점 입력', grade: '등급 입력' }[d.source] || '';
-          sc.push([teamName(t), s.no === null ? '' : s.no, s.name || '', s.gender || '', r2(s.papsPoints), s.papsGrade || '', srcLabel + (d.scaled ? '(환산)' : '') + (d.overridden ? ' → 교사 수정' + (typeof d.computedTotal === 'number' ? ' (원래 ' + r2(d.computedTotal) + '점)' : '') : '')]
+          var pt = s.papsTotal !== undefined ? s.papsTotal : s.papsPoints, pg = s.papsTotalGrade !== undefined ? s.papsTotalGrade : s.papsGrade;
+          var pImp = s.papsTotalImputed !== undefined ? s.papsTotalImputed : s.papsImputed;
+          sc.push([teamName(t), s.no === null ? '' : s.no, s.name || '', s.gender || '', r2(pt), pg || '', srcLabel + (d.scaled ? '(환산)' : '') + (d.overridden ? ' → 교사 수정' + (typeof d.computedTotal === 'number' ? ' (원래 ' + r2(d.computedTotal) + '점)' : '') : '')]
             .concat(itemKeys.map(function (k) { return d.items && d.items[k] ? d.items[k].points : ''; }))
             .concat(VK.map(function (k) { return r2(s.virtues[k]); }))
-            .concat([s.papsImputed ? 'Y' : '', s.virtueImputed ? 'Y' : '', s.source && s.source.paps ? 'Y' : '', s.source && s.source.survey ? 'Y' : '']));
+            .concat([pImp ? 'Y' : '', s.virtueImputed ? 'Y' : '', s.source && s.source.paps ? 'Y' : '', s.source && s.source.survey ? 'Y' : ''])
+            .concat(withSkill && sport ? [r2(s.skillPoints), s.skillImputed ? 'Y' : ''] : []).concat(basis === 'mix' ? [r2(s.papsPoints)] : []));
         });
       });
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(sc), '교사용 개인점수');
@@ -197,12 +204,19 @@
   }
 
   /* 빈 양식 다운로드 (교사가 직접 채우는 용도) */
-  function exportTemplateXlsx(kind) {
+  /* kind 'skill': extra = {students, sports} — 지금 명단의 번호·이름과 종목 열(이미 넣은 점수 포함) */
+  function exportTemplateXlsx(kind, extra) {
     var XLSX = root.XLSX;
     if (!XLSX) throw new Error('엑셀 라이브러리(SheetJS)를 불러오지 못했습니다.');
     var wb = XLSX.utils.book_new();
     var rows;
-    if (kind === 'survey') {
+    if (kind === 'skill') {
+      var sps = (extra && extra.sports && extra.sports.length) ? extra.sports : ['배구'];
+      var list = (extra && extra.students) || [];
+      rows = [['번호', '이름'].concat(sps)];
+      if (list.length) list.forEach(function (s) { rows.push([s.no === null || s.no === undefined ? '' : s.no, s.name || ''].concat(sps.map(function (sp) { return s.skills && s.skills[sp] !== undefined ? s.skills[sp] : ''; }))); });
+      else for (var q = 1; q <= 30; q++) rows.push([q, ''].concat(sps.map(function () { return ''; })));
+    } else if (kind === 'survey') {
       rows = [['번호', '이름', '성별'].concat(Array.from({ length: 32 }, function (_, i) { return String(i + 1); }))];
       for (var i = 1; i <= 30; i++) rows.push([i, '', '']);
     } else if (kind === 'virtues') {
@@ -213,7 +227,7 @@
       for (var k = 1; k <= 30; k++) rows.push([k, '', '', '']);
     }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), '입력');
-    var fname = { survey: '인성설문_32문항_양식.xlsx', virtues: '인성_4덕목_양식.xlsx', paps: 'PAPS_총점_양식.xlsx' }[kind] || '양식.xlsx';
+    var fname = { survey: '인성설문_32문항_양식.xlsx', virtues: '인성_4덕목_양식.xlsx', paps: 'PAPS_총점_양식.xlsx', skill: '종목_수행능력_양식.xlsx' }[kind] || '양식.xlsx';
     XLSX.writeFile(wb, fname);
   }
 

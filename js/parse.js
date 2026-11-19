@@ -489,7 +489,58 @@
     return list;
   }
 
+  /*
+   * 종목 수행능력 표: 번호·이름(또는 학번) + 종목 열(머리글이 종목 이름, 예: "배구", "농구 점수", "배구(100점)").
+   * 머리글이 "점수"·"수행능력"처럼 종목 이름이 아니면 currentSport 에 넣음. 값은 0~100으로 자름.
+   * 반환 { sports:[이름], records:[{no, name, scores:{종목: 점수}}], clipped, skipped, warnings }
+   */
+  var SKILL_GENERIC = ['점수', '수행', '수행능력', '수행점수', '수행능력점수', '실기', '실기점수', '실기평가', '기능', '기능점수', '기량', '종목점수', '총점', '100점'];
+  function skillSportName(h) {
+    return cellStr(h).replace(/\(?\s*\d+\s*점\s*(만점)?\s*\)?$/, '').replace(/\s*(수행\s*능력|수행|실기|기능)?\s*(점수|평가)?\s*$/, '').trim();
+  }
+  function extractSkillTable(rows, currentSport) {
+    var out = { sports: [], records: [], clipped: 0, skipped: 0, warnings: [] };
+    var hr = -1, cols = null;
+    for (var r = 0; r < Math.min(rows.length, 12) && hr < 0; r++) {
+      var row = rows[r] || [], base = {}, sc = [];
+      row.forEach(function (h, c) {
+        var raw = cellStr(h); if (!raw) return;
+        var cl = classifyHeader(h), n = norm(raw);
+        if (cl && (cl.field === 'no' || cl.field === 'name' || cl.field === 'hakbun')) { if (base[cl.field] === undefined) base[cl.field] = c; return; }
+        if (SKILL_GENERIC.indexOf(n) >= 0) { sc.push({ c: c, sport: currentSport || null, generic: true }); return; }
+        if (cl) return;                                   // 성별·반·PAPS·덕목 등 다른 자료 열
+        var name = skillSportName(raw);
+        if (name) sc.push({ c: c, sport: name });
+      });
+      if ((base.no !== undefined || base.name !== undefined || base.hakbun !== undefined) && sc.length) { hr = r; cols = { base: base, sc: sc }; }
+    }
+    if (hr < 0) { out.warnings.push('번호·이름 열과 종목 점수 열을 찾지 못했습니다. 첫 줄에 "번호 · 이름 · 배구"처럼 머리글을 넣어 주세요.'); return out; }
+    if (cols.sc.some(function (x) { return x.generic && !x.sport; })) {
+      out.warnings.push('"점수" 열이 어느 종목인지 알 수 없습니다. 머리글을 종목 이름(예: 배구)으로 바꾸거나 먼저 3단계에서 종목을 고르세요.');
+      cols.sc = cols.sc.filter(function (x) { return x.sport; });
+    }
+    cols.sc.forEach(function (x) { if (out.sports.indexOf(x.sport) < 0) out.sports.push(x.sport); });
+    rows.slice(hr + 1).forEach(function (row) {
+      if (!row || !row.some(function (v) { return cellStr(v) !== ''; })) return;
+      var b = cols.base, no = null, name = null;
+      if (b.hakbun !== undefined) { var hk = parseHakbun(row[b.hakbun]); if (hk) { no = hk.no; name = hk.name; } }
+      if (b.no !== undefined) no = parseNo(row[b.no]) || no;
+      if (b.name !== undefined && cellStr(row[b.name])) name = cellStr(row[b.name]);
+      var scores = {}, any = false;
+      cols.sc.forEach(function (x) {
+        var v = S.toNum(row[x.c]);
+        if (v === null) return;
+        if (v < 0 || v > 100) { out.clipped++; v = Math.max(0, Math.min(100, v)); }
+        scores[x.sport] = v; any = true;
+      });
+      if ((no === null && !name) || !any) { out.skipped++; return; }
+      out.records.push({ no: no, name: name, scores: scores });
+    });
+    return out;
+  }
+
   var api = {
+    extractSkillTable: extractSkillTable, skillSportName: skillSportName,
     FIELD_DEFS: FIELD_DEFS, classifyHeader: classifyHeader, detectTable: detectTable, extractStudents: extractStudents, extractReport: extractReport,
     parseDelimitedText: parseDelimitedText, readWorkbook: readWorkbook, mergeStudents: mergeStudents,
     parseGender: parseGender, parseNo: parseNo, parseHakbun: parseHakbun, parseClass: parseClass, classKeyOf: classKeyOf,

@@ -775,8 +775,16 @@
     /* 줄을 새로 만든 뒤 화면의 표와 맞춰 고침(syncRows) — 표를 지우고 다시 그리면 화면이 위로 튀고 입력 중인 칸이 풀림 */
     var body = $('#roster-body'), rows = [];
     var byId = {}; prep.forEach(function (p) { byId[p.id] = p; });
+    /* 종목 수행능력 열: 종목이 있거나 기준이 PAPS가 아닐 때 (오늘 종목) */
+    var sport = s.options.sport || '';
+    var showSkill = !!((s.sports && s.sports.length) || (s.options.fitnessBasis && s.options.fitnessBasis !== 'paps'));
+    var thS = $('#th-skill');
+    thS.hidden = !showSkill;
+    thS.textContent = sport ? sport + ' 수행(100점)' : '수행능력(100점)';
+    $('#skill-tools').hidden = !showSkill;
+    $('#skill-tools-hint').textContent = !sport ? '3단계에서 "＋ 종목 추가"로 종목을 먼저 만드세요.' : (s.sports.length > 1 ? '지금 칸은 ' + sport + ' 점수입니다 (종목 바꾸기: 3단계).' : '');
     if (!s.students.length) {
-      rows.push(h('tr', null, h('td', { colspan: 10, class: 'empty', text: '1단계에서 자료를 불러오거나 "학생 추가"로 직접 입력하세요.' })));
+      rows.push(h('tr', null, h('td', { colspan: 11, class: 'empty', text: '1단계에서 자료를 불러오거나 "학생 추가"로 직접 입력하세요.' })));
     }
     s.students.forEach(function (st) {
       var p = byId[st.id];
@@ -808,14 +816,14 @@
         var scaledText = d && d.scaled ? '\n※ ' + d.nAreas + '개 영역만 있어 100점 만점으로 환산 (없음: ' + d.missing.join(', ') + ')' : '';
         /* 총점 칸은 교사가 직접 고칠 수 있음 (기록과 실제 수행 능력의 차이가 클 때). 원래 점수는 data-base 에 두고, 비우거나 같은 값이면 수정 해제 */
         var over = !!(d && d.overridden);
-        var baseTotal = over ? d.computedTotal : (p.papsImputed ? null : p.papsPoints);
+        var baseTotal = over ? d.computedTotal : (p.papsTotalImputed ? null : p.papsTotal);
         var hasBase = typeof baseTotal === 'number' && isFinite(baseTotal);
         var shown = over ? st.papsOverride : (hasBase ? Math.round(baseTotal * 10) / 10 : '');
         papsTd.appendChild(h('input', { type: 'number', step: 'any', min: 0, max: 100, 'data-field': 'papsOverride', 'data-base': hasBase ? baseTotal : '', value: shown,
-          class: 'paps-edit' + (over ? ' edited' : ''), placeholder: p.papsImputed ? fmt(p.papsPoints, 0) : '',
+          class: 'paps-edit' + (over ? ' edited' : ''), placeholder: p.papsTotalImputed ? fmt(p.papsTotal, 0) : '',
           title: srcText + '\n' + lines + scaledText + '\n\n숫자를 고치면 교사 수정 점수로 편성합니다. 칸을 비우면 원래 점수로 돌아갑니다.' }));
         papsTd.appendChild(h('span', { class: 'unit', text: '점' }));
-        papsTd.appendChild(h('span', { class: 'badge', text: p.papsGrade + '등급' }));
+        papsTd.appendChild(h('span', { class: 'badge', text: p.papsTotalGrade + '등급' }));
         if (over) {
           papsTd.appendChild(h('span', { class: 'badge warn', text: '교사 수정', title: '교사가 직접 고친 점수입니다.' + (hasBase ? ' 원래 점수 ' + fmt(baseTotal, 1) + '점' : '') }));
           papsTd.appendChild(h('button', { class: 'btn ghost small', type: 'button', 'data-action': 'reset-paps', title: hasBase ? '원래 점수(' + fmt(baseTotal, 1) + '점)로 되돌리기' : '수정한 점수 지우기' }, '↺'));
@@ -825,10 +833,20 @@
         if (d && d.scaled) papsTd.appendChild(h('span', { class: 'badge warn', text: '환산', title: '일부 영역 기록이 없어 100점 만점으로 환산했습니다' }));
       } else {
         papsTd.appendChild(h('input', { type: 'number', step: 'any', 'data-field': 'papsGiven', value: st.papsGiven === null || st.papsGiven === undefined ? '' : st.papsGiven, placeholder: s.options.papsGivenType === 'grade' ? '등급' : '총점', style: 'max-width:5.5em' }));
-        if (!p.papsImputed) papsTd.appendChild(h('span', { class: 'hint', text: ' → ' + fmt(p.papsPoints, 0) + '점' }));
+        if (!p.papsTotalImputed) papsTd.appendChild(h('span', { class: 'hint', text: ' → ' + fmt(p.papsTotal, 0) + '점' }));
       }
-      if (p.papsImputed) papsTd.appendChild(h('span', { class: 'badge warn', text: '대체', title: 'PAPS 자료가 없어 학급 평균 점수로 채웠습니다' }));
+      if (p.papsTotalImputed) papsTd.appendChild(h('span', { class: 'badge warn', text: '대체', title: 'PAPS 자료가 없어 학급 평균 점수로 채웠습니다' }));
       tr.appendChild(papsTd);
+      /* 종목 수행능력 (오늘 종목) */
+      var skTd = h('td', { class: 'num' });
+      if (!showSkill) skTd.hidden = true;
+      else if (sport) {
+        var sv = S.skillValue(st, sport);
+        skTd.appendChild(h('input', { type: 'number', step: 'any', min: 0, max: 100, 'data-field': 'skill', class: 'skill-edit', value: sv === null ? '' : sv,
+          placeholder: p.skillImputed && p.skillPoints !== null ? fmt(p.skillPoints, 0) : '', title: sport + ' 수행능력 점수 (0~100점). 비우면 학급 평균으로 채웁니다.' }));
+        if (p.skillImputed) skTd.appendChild(h('span', { class: 'badge warn', text: '대체', title: sport + ' 점수가 없어 학급 평균으로 채웁니다' }));
+      } else skTd.appendChild(h('span', { class: 'hint', text: '종목 없음' }));
+      tr.appendChild(skTd);
       /* 덕목 */
       VK.forEach(function (k) {
         var td = h('td', { class: 'num' });
@@ -856,7 +874,8 @@
     var f = s.students.filter(function (x) { return x.gender === '여'; }).length;
     var u = s.students.length - m - f;
     renderGenderTools(s, m, f, u);
-    var hasP = prep.filter(function (p) { return !p.papsImputed; }).length;
+    var hasP = prep.filter(function (p) { return !p.papsTotalImputed; }).length;
+    var hasK = sport ? prep.filter(function (p) { return !p.skillImputed; }).length : 0;
     var hasV = prep.filter(function (p) { return !p.virtueImputed && (p.items || p.virtuesGiven); }).length;
     var rel = prep.filter(function (p) { return p.papsDetail && p.papsDetail.source === 'relative'; }).length;
     var both = s.students.filter(function (x) { return x.source && x.source.paps && x.source.survey; }).length;
@@ -865,7 +884,7 @@
     var inact = St.inactiveStudents(s).length;
     var edited = prep.filter(function (p) { return p.papsDetail && p.papsDetail.overridden; }).length;
     var link =(s.imports && s.imports.paps && s.imports.survey) ? ' · 두 자료 연결 ' + both + '명' + (onlyP ? ' · PAPS만 ' + onlyP : '') + (onlyS ? ' · 설문만 ' + onlyS : '') : '';
-    $('#roster-summary').textContent = s.students.length ? ((s.classLabel ? s.classLabel + ' 학급 · ' : '') + '총 ' + s.students.length + '명 · 남 ' + m + ' 여 ' + f + (u ? ' 미상 ' + u : '') + ' · PAPS ' + hasP + '명' + (rel ? ' (상대점수 ' + rel + '명)' : '') + (edited ? ' (교사 수정 ' + edited + '명)' : '') + ' · 인성 ' + hasV + '명' + link + (inact ? ' · 오늘 불참 ' + inact + '명 (편성 ' + (s.students.length - inact) + '명)' : '')) : '';
+    $('#roster-summary').textContent = s.students.length ? ((s.classLabel ? s.classLabel + ' 학급 · ' : '') + '총 ' + s.students.length + '명 · 남 ' + m + ' 여 ' + f + (u ? ' 미상 ' + u : '') + ' · PAPS ' + hasP + '명' + (rel ? ' (상대점수 ' + rel + '명)' : '') + (edited ? ' (교사 수정 ' + edited + '명)' : '') + (showSkill && sport ? ' · ' + sport + ' ' + hasK + '명' : '') + ' · 인성 ' + hasV + '명' + link + (inact ? ' · 오늘 불참 ' + inact + '명 (편성 ' + (s.students.length - inact) + '명)' : '')) : '';
   }
 
   /* 성별 한 번에 넣기 막대 (표 아래): 빈칸이 있으면 화면 아래에 붙어 따라다님 */
@@ -895,7 +914,76 @@
   }
   var lastGenderId = null;   // Shift+누르기 범위의 시작 (방금 성별을 누른 학생)
 
+  /* ---------- 종목 수행능력 점수 붙여넣기 / 파일 ----------
+   * 명단의 학생과 연결(이름이 한 명뿐이면 이름, 아니면 번호). 명단에 없는 학생은 추가하지 않음 */
+  function applySkillSheets(sheets, from) {
+    var cur = St.get().options.sport || '', res = null;
+    for (var i = 0; i < sheets.length; i++) { var r = P.extractSkillTable(sheets[i].rows || [], cur); if (r.records.length) { res = r; break; } if (!res) res = r; }
+    var box = $('#skill-report');
+    if (!res || !res.records.length) {
+      box.hidden = false;
+      box.textContent = '⚠ 점수를 읽지 못했습니다. ' + ((res && res.warnings.join(' ')) || '머리글(번호 · 이름 · 종목)이 있는 표인지 확인해 주세요.');
+      return false;
+    }
+    var linked = 0, unmatched = [], perSport = {};
+    St.update(function (s) {
+      var byName = {}, byNo = {};
+      s.students.forEach(function (st) {
+        if (st.name) { var nk = normName(st.name); (byName[nk] = byName[nk] || []).push(st); }
+        if (st.no !== null && st.no !== undefined) (byNo[st.no] = byNo[st.no] || []).push(st);
+      });
+      if (!Array.isArray(s.sports)) s.sports = [];
+      res.sports.forEach(function (sp) { if (s.sports.indexOf(sp) < 0) s.sports.push(sp); });
+      if (!s.options.sport || res.sports.indexOf(s.options.sport) < 0) s.options.sport = res.sports[0];
+      res.records.forEach(function (r) {
+        var st = null, nk = r.name ? normName(r.name) : null;
+        if (nk && byName[nk] && byName[nk].length === 1) st = byName[nk][0];
+        if (!st && r.no !== null && byNo[r.no] && byNo[r.no].length === 1) {
+          var c = byNo[r.no][0];
+          if (!(nk && c.name && normName(c.name) !== nk)) st = c;
+        }
+        if (!st) { unmatched.push((r.no !== null ? r.no + ' ' : '') + (r.name || '')); return; }
+        st.skills = st.skills || {};
+        Object.keys(r.scores).forEach(function (sp) { st.skills[sp] = r.scores[sp]; perSport[sp] = (perSport[sp] || 0) + 1; });
+        linked++;
+      });
+    });
+    var msg = '✔ ' + (from || '표') + '에서 ' + linked + '명의 점수를 넣었습니다 (' + res.sports.map(function (sp) { return sp + ' ' + (perSport[sp] || 0) + '명'; }).join(' · ') + ').';
+    if (res.clipped) msg += ' 0~100 밖의 값 ' + res.clipped + '개는 0 또는 100으로 맞췄습니다.';
+    if (res.skipped) msg += ' 번호·이름이나 점수가 없는 행 ' + res.skipped + '개는 건너뛰었습니다.';
+    if (unmatched.length) msg += ' ⚠ 명단에서 찾지 못한 ' + unmatched.length + '명: ' + unmatched.slice(0, 8).join(', ') + (unmatched.length > 8 ? ' …' : '') + ' (명단에 먼저 학생을 넣은 뒤 다시 붙여넣으세요)';
+    if (res.warnings.length) msg += ' ' + res.warnings.join(' ');
+    box.hidden = false;
+    box.textContent = msg;
+    toast(linked + '명의 수행능력 점수를 넣었습니다.');
+    return true;
+  }
+  function bindSkillEvents() {
+    $('#btn-skill-paste').addEventListener('click', function () { var b = $('#skill-paste-box'); b.hidden = !b.hidden; if (!b.hidden) $('textarea', b).focus(); });
+    $('#btn-skill-cancel').addEventListener('click', function () { $('#skill-paste-box').hidden = true; });
+    $('#btn-skill-apply').addEventListener('click', function () {
+      var ta = $('#skill-paste-box textarea'), text = ta.value;
+      if (!text.trim()) { toast('붙여넣은 내용이 없습니다.', true); return; }
+      if (applySkillSheets([{ name: 'CSV', rows: P.parseDelimitedText(text) }], '붙여넣은 표')) { ta.value = ''; $('#skill-paste-box').hidden = true; }
+    });
+    $('#skill-file').addEventListener('change', function (e) {
+      var inp = e.target, file = inp.files && inp.files[0];
+      if (!file) return;
+      var name = file.name || '파일', ext = (name.split('.').pop() || '').toLowerCase(), reader = new FileReader();
+      reader.onerror = function () { toast('파일을 읽지 못했습니다.', true); };
+      if (ext === 'csv' || ext === 'txt' || ext === 'tsv') {
+        reader.onload = function () { try { applySkillSheets([{ name: 'CSV', rows: P.parseDelimitedText(reader.result) }], name); } catch (err) { toast('표를 읽지 못했습니다: ' + err.message, true); } };
+        reader.readAsText(file, 'utf-8');
+      } else {
+        reader.onload = function () { try { applySkillSheets(P.readWorkbook(new Uint8Array(reader.result)), name); } catch (err) { toast('엑셀 파일을 읽지 못했습니다: ' + err.message, true); } };
+        reader.readAsArrayBuffer(file);
+      }
+      inp.value = '';
+    });
+  }
+
   function bindRosterEvents() {
+    bindSkillEvents();
     $('#roster-body').addEventListener('change', function (e) {
       var inp = e.target, tr = inp.closest('tr'), field = inp.dataset.field;
       if (!tr || !field) return;
@@ -907,6 +995,12 @@
         else if (field === 'name') st.name = String(val).trim() || null;
         else if (field === 'status') st.status = val || '';
         else if (field === 'papsGiven') st.papsGiven = S.toNum(val);
+        else if (field === 'skill') {
+          var sp = s.options.sport, sv = S.toNum(val);
+          if (!sp) return;
+          if (sv === null) { if (st.skills) { delete st.skills[sp]; if (!Object.keys(st.skills).length) delete st.skills; } }
+          else { st.skills = st.skills || {}; st.skills[sp] = Math.max(0, Math.min(100, sv)); }
+        }
         else if (field === 'papsOverride') {
           /* 교사 수정 총점: 비우거나 원래 점수와 같으면 수정 해제 */
           var ov = S.toNum(val), base = S.toNum(inp.dataset.base);
@@ -991,6 +1085,7 @@
     setIfIdle($('#opt-defaultGrade'), o.defaultGrade || 1);
     setIfIdle($('#opt-papsGivenType'), o.papsGivenType);
     $$('input[name=draftMode]').forEach(function (r) { r.checked = (o.draftMode || 'auto') === r.value; });
+    renderBasis(s, prep);
     var N = prep.length, K = Math.max(1, o.teamCount | 0), inact = s.students.length - N;
     $('#team-size-hint').textContent = N ? ('참여 학생 ' + N + '명' + (inact ? ' (불참 ' + inact + '명 제외)' : '') + ' → 팀당 ' + Math.floor(N / K) + (N % K ? '~' + Math.ceil(N / K) : '') + '명') : '';
     /* 남녀 따로 편성 */
@@ -1015,11 +1110,96 @@
     if (mw) {
       var ratio = N ? Math.max(missV, missP) / N : 0;
       mw.hidden = !(missV || missP);
-      mw.textContent = (missV || missP) ? ('⚠ 자료가 없어 학급 평균으로 채운 학생: 인성 ' + missV + '명 · PAPS ' + missP + '명 (' + Math.round(ratio * 100) + '%). ' + (ratio >= 0.2 ? '누락이 많으면 균형 수치가 실제보다 좋게 보입니다. 편성 전에 설문을 다시 받거나, 명단에서 해당 학생을 팀 고정으로 직접 배치하는 것을 권장합니다.' : '해당 학생은 어느 팀에 가도 균형 수치를 바꾸지 않습니다.')) : '';
+      mw.textContent = (missV || missP) ? ('⚠ 자료가 없어 학급 평균으로 채운 학생: 인성 ' + missV + '명 · ' + S.fitnessLabel(o) + ' ' + missP + '명 (' + Math.round(ratio * 100) + '%). ' + (ratio >= 0.2 ? '누락이 많으면 균형 수치가 실제보다 좋게 보입니다. 편성 전에 설문을 다시 받거나, 명단에서 해당 학생을 팀 고정으로 직접 배치하는 것을 권장합니다.' : '해당 학생은 어느 팀에 가도 균형 수치를 바꾸지 않습니다.')) : '';
     }
     renderConstraints(s);
   }
+
+  /* 1차 균등 기준 (PAPS / 종목 수행능력 / 섞기) + 종목 관리 */
+  function renderBasis(s, prep) {
+    var o = s.options, basis = o.fitnessBasis || 'paps', sports = s.sports || [];
+    $$('input[name=fitnessBasis]').forEach(function (r) { r.checked = basis === r.value; });
+    $('#sport-row').hidden = basis === 'paps';
+    var sel = $('#opt-sport');
+    if (document.activeElement !== sel) {
+      clear(sel);
+      if (!sports.length) sel.appendChild(h('option', { value: '', text: '(종목 없음)' }));
+      sports.forEach(function (sp) { sel.appendChild(h('option', { value: sp, text: sp, selected: sp === o.sport })); });
+    }
+    $('#btn-sport-rename').disabled = $('#btn-sport-delete').disabled = !o.sport;
+    $('#skillWeight-wrap').hidden = basis !== 'mix';
+    setIfIdle($('#opt-skillWeight'), Math.round((typeof o.skillWeight === 'number' ? o.skillWeight : 0.5) * 100));
+    $('#skillWeight-value').textContent = Math.round((typeof o.skillWeight === 'number' ? o.skillWeight : 0.5) * 100) + '%';
+    var hint = $('#sport-hint'), warn = false, msg = '';
+    if (basis !== 'paps') {
+      if (!o.sport) { msg = '⚠ "＋ 종목 추가"로 종목(예: 배구)을 만든 뒤, 2단계 명단에서 학생마다 수행능력 점수(0~100점)를 넣어 주세요. 종목을 고르기 전에는 PAPS 총점으로 편성합니다.'; warn = true; }
+      else {
+        var have = prep.filter(function (p) { return !p.skillImputed; }).length;
+        if (!have) { msg = '⚠ 아직 ' + o.sport + ' 점수가 있는 학생이 없습니다. 2단계 명단의 "' + o.sport + ' 수행" 칸에 점수를 넣거나 "수행능력 점수 붙여넣기"로 한 번에 넣어 주세요.'; warn = true; }
+        else msg = o.sport + ' 점수 ' + have + '명 / 참여 ' + prep.length + '명' + (have < prep.length ? ' — 점수가 없는 ' + (prep.length - have) + '명은 학급 평균으로 채웁니다.' : '') +
+          (basis === 'mix' ? ' 섞은 점수 = 수행능력 × ' + Math.round(o.skillWeight * 100) + '% + PAPS × ' + Math.round((1 - o.skillWeight) * 100) + '%' : '');
+      }
+    }
+    hint.textContent = msg;
+    hint.classList.toggle('warn-text', warn);
+    var name = S.fitnessLabel(o);
+    $$('.basis-name').forEach(function (el) { el.textContent = name; });
+  }
+  function renameSportIn(sess, from, to) {
+    sess.sports = (sess.sports || []).map(function (x) { return x === from ? to : x; });
+    sess.students.forEach(function (st) {
+      if (st.skills && st.skills[from] !== undefined) { st.skills[to] = st.skills[from]; delete st.skills[from]; }
+    });
+    if (sess.options.sport === from) sess.options.sport = to;
+  }
+  function addSport(name, select) {
+    name = String(name || '').trim();
+    if (!name) return false;
+    St.update(function (s) {
+      if (!Array.isArray(s.sports)) s.sports = [];
+      if (s.sports.indexOf(name) < 0) s.sports.push(name);
+      if (select || !s.options.sport) s.options.sport = name;
+    });
+    return true;
+  }
+  function bindBasisEvents() {
+    $$('input[name=fitnessBasis]').forEach(function (r) {
+      r.addEventListener('change', function () { if (r.checked) St.update(function (s) { s.options.fitnessBasis = r.value; }); });
+    });
+    $('#opt-sport').addEventListener('change', function (e) { var v = e.target.value; St.update(function (s) { s.options.sport = v; }); e.target.blur(); });
+    $('#opt-skillWeight').addEventListener('input', function (e) { $('#skillWeight-value').textContent = e.target.value + '%'; });
+    $('#opt-skillWeight').addEventListener('change', function (e) { var v = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)) / 100; St.update(function (s) { s.options.skillWeight = v; }, { noUndo: true }); });
+    $('#btn-sport-add').addEventListener('click', function () {
+      var name = prompt('종목 이름을 입력하세요 (예: 배구, 농구, 플로어볼)');
+      if (name === null) return;
+      name = name.trim();
+      if (!name) return;
+      if ((St.get().sports || []).indexOf(name) >= 0) { St.update(function (s) { s.options.sport = name; }); toast(name + ' 종목을 골랐습니다.'); return; }
+      addSport(name, true);
+      toast(name + ' 종목을 만들었습니다. 2단계 명단에서 학생마다 점수(0~100)를 넣어 주세요.');
+    });
+    $('#btn-sport-rename').addEventListener('click', function () {
+      var from = St.get().options.sport; if (!from) return;
+      var to = prompt('새 종목 이름', from);
+      if (to === null) return;
+      to = to.trim();
+      if (!to || to === from) return;
+      if ((St.get().sports || []).indexOf(to) >= 0) { toast('같은 이름의 종목이 이미 있습니다.', true); return; }
+      St.update(function (s) { renameSportIn(s, from, to); });
+    });
+    $('#btn-sport-delete').addEventListener('click', function () {
+      var sp = St.get().options.sport; if (!sp) return;
+      var n = St.get().students.filter(function (st) { return S.skillValue(st, sp) !== null; }).length;
+      if (!confirm(sp + ' 종목' + (n ? '과 학생 ' + n + '명의 점수' : '') + '를 지울까요? (상단 되돌리기로 되살릴 수 있습니다)')) return;
+      St.update(function (s) {
+        s.sports = (s.sports || []).filter(function (x) { return x !== sp; });
+        s.students.forEach(function (st) { if (st.skills) { delete st.skills[sp]; if (!Object.keys(st.skills).length) delete st.skills; } });
+        s.options.sport = s.sports[0] || '';
+      });
+    });
+  }
   function bindSettingsEvents() {
+    bindBasisEvents();
     function upd(key, parse) {
       return function (e) {
         var v = parse ? parse(e.target) : e.target.value;
@@ -1109,7 +1289,7 @@
     var res = A.buildTeams(prep, opt);
     St.update(function (ss) {
       ss.options.seed = opt.seed;
-      ss.result = { teams: res.teams, original: res.teams.map(function (t) { return t.slice(); }), seed: res.seed, log: res.log, builtAt: new Date().toISOString(), meta: res.meta, source: 'auto', split: (res.meta && res.meta.separate) || null, note: '' };
+      ss.result = { teams: res.teams, original: res.teams.map(function (t) { return t.slice(); }), seed: res.seed, log: res.log, builtAt: new Date().toISOString(), meta: res.meta, source: 'auto', split: (res.meta && res.meta.separate) || null, note: '', basis: S.basisSnapshot(ss.options) };
       ss.manualEdits = false;
     });
     toast('팀 편성 완료');
@@ -1138,7 +1318,7 @@
       if (wasSplit !== isSplit) ss.teamNames = [];   // "남 1팀"·"1팀" 이름 체계가 달라짐
       ss.options.seed = opt.seed;
       ss.result = { teams: res.teams, original: res.teams.map(function (t) { return t.slice(); }), seed: res.seed, log: res.log.concat([msg]), builtAt: new Date().toISOString(),
-        meta: res.meta, source: 'auto', mode: 'auto', remix: true, split: (res.meta && res.meta.separate) || null, note: '' };
+        meta: res.meta, source: 'auto', mode: 'auto', remix: true, split: (res.meta && res.meta.separate) || null, note: '', basis: S.basisSnapshot(ss.options) };
       ss.manualEdits = false;
       ss.draft = null;                    // 편성 화면에 남아 있던 이전 진행 상태는 지움
       if (ss.teamNames && ss.teamNames.length !== res.teams.length) ss.teamNames = [];
@@ -1244,10 +1424,11 @@
     var unIds = unassignedIds(s, teams);
 
     /* 한눈에 보는 판정: 숫자 대신 얼굴·문장·네 칸 눈금으로 (다섯 항목 가운데 가장 차이 나는 항목 기준) */
+    var fm = setMetricBasis(o);
     var ov = overallVerdict(ev), lv = ov.level;
     var fix = '더 고르게 하려면 "새로운 조합으로 다시 편성"을 누르거나 학생을 직접 옮겨 보세요.';
-    var say = lv === 3 ? { face: '😀', title: '아주 고르게 나뉘었습니다', text: '체력과 인성 모두 팀끼리 거의 차이가 없습니다. 어느 팀끼리 겨뤄도 비슷한 수준입니다.' }
-      : lv === 2 ? { face: '🙂', title: '고르게 나뉘었습니다', text: '체력과 인성이 팀끼리 비슷합니다. 이대로 수업에 써도 좋습니다.' }
+    var say = lv === 3 ? { face: '😀', title: '아주 고르게 나뉘었습니다', text: fm.and + ' 인성 모두 팀끼리 거의 차이가 없습니다. 어느 팀끼리 겨뤄도 비슷한 수준입니다.' }
+      : lv === 2 ? { face: '🙂', title: '고르게 나뉘었습니다', text: fm.and + ' 인성이 팀끼리 비슷합니다. 이대로 수업에 써도 좋습니다.' }
       : lv === 1 ? { face: '😐', title: '대체로 고르지만, 조금 차이 나는 항목이 있습니다', text: '조금 차이 나는 항목: ' + ov.weak.join(', ') + '. 아래 그림에서 점이 벌어진 줄을 확인하세요.', tip: fix }
       : lv === 0 ? { face: '⚠️', title: '팀 사이에 차이가 큰 항목이 있습니다', text: '차이가 큰 항목: ' + ov.bad.join(', ') + (ov.weak.length ? ' · 조금 차이 나는 항목: ' + ov.weak.join(', ') : '') + '. 학생을 직접 옮겼거나 함께·떨어뜨리기·고정 조건이 많을 때, 팀 인원이 아주 적을 때 생깁니다.', tip: fix }
       : { face: '❔', title: '비교할 자료가 부족합니다', text: '체력·인성 자료가 없거나 모두 같아서 팀끼리 비교할 수 없습니다. 1단계에서 자료를 올리면 판정이 나옵니다.' };
@@ -1264,10 +1445,17 @@
         s.manualEdits ? h('span', { class: 'badge warn', text: '수동 조정됨' }) : null,
         s.result.source === 'draft' ? h('span', { class: 'badge', text: ({ auto: '교사 편성', pick: '팀별 드래프트', credit: '크레딧 드래프트' }[s.result.mode] || '드래프트') + ' 결과' }) : null,
         s.result.remix ? h('span', { class: 'badge', text: '🔀 새로운 조합', title: '지난 편성에서 같은 팀이었던 학생들이 덜 겹치게 다시 짠 편성' }) : null,
+        h('span', { class: 'badge teacher-only', text: fm.icon + ' ' + S.fitnessLabel(o) + ' 기준', title: '1차로 팀 평균을 맞춘 점수: ' + fm.sub }),
+        (function () {
+          var rb = s.result.basis;
+          if (!rb) return null;
+          var was = S.fitnessLabel(rb), now = S.fitnessLabel(o);
+          return was !== now ? h('span', { class: 'badge warn teacher-only', text: '편성은 ' + was + ' 기준', title: '이 편성은 ' + was + ' 기준으로 만들었습니다. 아래 판정·그림은 지금 고른 ' + now + ' 기준으로 다시 잰 것입니다. ' + now + ' 기준으로 새로 짜려면 "새로운 조합으로 다시 편성"을 누르거나 편성 화면에서 다시 편성하세요.' }) : null;
+        })(),
         (s.manualEdits && s.result.original && !s.studentView) ? h('button', { class: 'btn ghost small', type: 'button', style: 'margin-left:.4rem', title: '수동 조정을 모두 되돌려 편성 직후(추천안) 상태로', onclick: restoreOriginal }, '편성 직후로 복원') : null),
       (function () {
         var impP = prep.filter(function (p) { return p.papsImputed; }).length, impV = prep.filter(function (p) { return p.virtueImputed; }).length;
-        return (impP || impV) ? h('div', { class: 'teacher-only' }, h('span', { class: 'badge warn', text: '대체' }), ' 체력 ' + impP + '명 · 인성 ' + impV + '명은 자료가 없어 우리 반 평균으로 채웠습니다. 그만큼 실제보다 고르게 보일 수 있습니다.') : null;
+        return (impP || impV) ? h('div', { class: 'teacher-only' }, h('span', { class: 'badge warn', text: '대체' }), ' ' + fm.name + ' ' + impP + '명 · 인성 ' + impV + '명은 자료가 없어 우리 반 평균으로 채웠습니다. 그만큼 실제보다 고르게 보일 수 있습니다.') : null;
       })()
     ));
     (s.result.log || []).forEach(function (m) { log.appendChild(h('div', { class: 'log adv', text: m })); });
@@ -1377,7 +1565,9 @@
     var cap = isCaptain(s, p.id, team);
     var el = h('li', { class: 'member' + (selectedMember === p.id ? ' selected' : '') + (cap ? ' captain' : ''), dataset: { id: p.id }, draggable: !s.studentView,
       /* 개인 점수는 화면에 적지 않고, 교사가 마우스를 올렸을 때만 보임 (학생용 보기에서는 없음) */
-      title: (cap ? '팀 주장\n' : '') + (s.studentView ? '' : '체력(PAPS) ' + fmt(p.papsPoints, 0) + '점 · ' + p.papsGrade + '등급' + (p.papsImputed ? ' (자료 없음 — 반 평균)' : '') + (p.papsDetail && p.papsDetail.overridden ? ' (교사 수정)' : '') + '\n인성(5점 만점) ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' · ') + (p.virtueImputed ? '\n(인성 일부는 자료가 없어 반 평균)' : '')) },
+      title: (cap ? '팀 주장\n' : '') + (s.studentView ? '' : '체력(PAPS) ' + fmt(p.papsTotal, 0) + '점 · ' + p.papsTotalGrade + '등급' + (p.papsTotalImputed ? ' (자료 없음 — 반 평균)' : '') + (p.papsDetail && p.papsDetail.overridden ? ' (교사 수정)' : '') +
+        (p.skillSport ? '\n' + p.skillSport + ' 수행 ' + fmt(p.skillPoints, 0) + '점' + (p.skillImputed ? ' (자료 없음 — 반 평균)' : '') : '') +
+        (p.fitnessBasis === 'mix' ? '\n섞은 점수 ' + fmt(p.papsPoints, 0) + '점' : '') + '\n인성(5점 만점) ' + VK.map(function (k) { return k + ' ' + fmt(p.virtues[k], 1); }).join(' · ') + (p.virtueImputed ? '\n(인성 일부는 자료가 없어 반 평균)' : '')) },
       h('span', { class: 'no', text: p.no === null || p.no === undefined ? '' : p.no }),
       h('span', { class: 'nm', text: p.name || '(이름 없음)' }),
       p.gender ? h('span', { class: 'g ' + (p.gender === '남' ? 'm' : 'f'), text: p.gender }) : null,
@@ -1411,6 +1601,14 @@
     { key: '정의', icon: '⚖️', name: '정의', sub: '정정당당, 도전' },
     { key: '배려', icon: '💙', name: '배려', sub: '존중, 받아들임' }
   ];
+  /* 첫 줄(1차 기준)의 이름을 지금 기준에 맞춤: PAPS → 체력 · 수행능력 → 종목 이름 · 섞기 → PAPS+종목 */
+  function setMetricBasis(o) {
+    var b = S.basisOf(o), m = METRICS[0];
+    if (b === 'skill') { m.icon = '🎯'; m.name = o.sport; m.sub = o.sport + ' 수행능력 점수'; m.and = o.sport + ' 실력과'; }
+    else if (b === 'mix') { var w = Math.round((typeof o.skillWeight === 'number' ? o.skillWeight : 0.5) * 100); m.icon = '🎯'; m.name = '체력+' + o.sport; m.sub = o.sport + ' 수행능력 ' + w + '% + PAPS ' + (100 - w) + '%'; m.and = '체력·' + o.sport + ' 실력과'; }
+    else { m.icon = '💪'; m.name = '체력'; m.sub = 'PAPS 종합 점수'; m.and = '체력과'; }
+    return m;
+  }
   function verdict(ratio) {
     if (!isFinite(ratio)) return { level: -1, text: '자료 없음' };
     var level = ratio <= 0.25 ? 3 : ratio <= 0.5 ? 2 : ratio <= 1.0 ? 1 : 0;
@@ -1580,7 +1778,7 @@
       r.onload = function () { try { St.importJSON(r.result); toast('세션을 불러왔습니다.'); } catch (err) { toast(err.message, true); } };
       r.readAsText(f, 'utf-8'); e.target.value = '';
     });
-    $$('.btn-template').forEach(function (b) { b.addEventListener('click', function () { try { X.exportTemplateXlsx(b.dataset.kind); } catch (e) { toast(e.message, true); } }); });
+    $$('.btn-template').forEach(function (b) { b.addEventListener('click', function () { try { var ss = St.get(); X.exportTemplateXlsx(b.dataset.kind, b.dataset.kind === 'skill' ? { students: ss.students, sports: ss.sports } : null); } catch (e) { toast(e.message, true); } }); });
     /* 인쇄 버튼(4단계 '인쇄', 5단계 인쇄물 버튼들)은 print.js 가 미리보기를 열어 처리 */
     var remixBtn = $('#btn-remix'); if (remixBtn) remixBtn.addEventListener('click', remix);
   }

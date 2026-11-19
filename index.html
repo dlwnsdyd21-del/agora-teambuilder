@@ -147,10 +147,24 @@
       </div>
       <p class="desc simple-only">성별은 <b>남·여 버튼</b>을 한 번 누르면 됩니다. 한쪽 성별만 먼저 누르고 표 아래 <b>빈칸 모두 남/여</b>로 나머지를 한 번에 채울 수 있습니다. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다. PAPS 기록과 실제 수행 능력의 차이가 큰 학생은 <b>PAPS 총점</b> 칸의 숫자를 직접 고칠 수 있습니다(<span class="badge warn">교사 수정</span> 표시, ↺로 원래 점수 복원). 오늘 결석·활동 제한·기록/심판인 학생은 <b>참여</b> 칸을 바꾸면 편성에서 빠지고, 다시 "참여"로 바꾸면 원래 팀으로 돌아옵니다.</p>
       <p class="desc adv">PAPS 점수는 공식 기준표(학교건강검사규칙 별표 4·5)로 종목당 0~20점을 매겨 5영역 합계 <b>100점 만점</b>으로 계산합니다(성별·학년 필요). 성별이 없으면 학급 내 상대점수(<span class="badge warn">상대</span>)로, 자료가 없으면 학급 평균(<span class="badge warn">대체</span>)으로 채워 편성에 포함합니다. 원기록이 없는 학생은 PAPS 총점/등급을, 32문항이 없는 학생은 4덕목 점수를 직접 입력할 수 있습니다. 점수 칸에 마우스를 올리면 종목별 점수가 보입니다. 기록과 실제 수행 능력의 차이가 큰 학생은 <b>PAPS 총점 칸의 숫자를 직접 고치면</b> 그 점수(<span class="badge warn">교사 수정</span>)로 편성하며, 칸을 비우거나 ↺를 누르면 원래 점수로 돌아갑니다. 파일을 다시 올려도 수정한 점수는 유지됩니다.</p>
+      <div id="skill-tools" class="skill-tools no-print" hidden>
+        <div class="row wrap">
+          <button id="btn-skill-paste" class="btn small" type="button">📋 수행능력 점수 붙여넣기</button>
+          <label class="btn ghost small">파일에서 읽기 <input type="file" id="skill-file" accept=".xlsx,.xls,.xlsm,.csv,.txt" hidden></label>
+          <button class="btn ghost small btn-template" data-kind="skill" type="button" title="지금 명단의 번호·이름과 종목 열이 들어간 엑셀 양식(이미 넣은 점수 포함)을 받습니다. 채운 뒤 '파일에서 읽기'로 올리세요">양식 받기</button>
+          <span class="hint" id="skill-tools-hint"></span>
+        </div>
+        <div id="skill-paste-box" class="paste-box" hidden>
+          <textarea rows="5" placeholder="엑셀에서 머리글 포함 표를 복사해 붙여넣으세요.&#10;예) 번호  이름  배구  농구&#10;    1    홍길동  80   65"></textarea>
+          <div class="row"><button id="btn-skill-apply" class="btn" type="button">점수 넣기</button><button id="btn-skill-cancel" class="btn ghost" type="button">닫기</button>
+            <span class="hint">머리글이 종목 이름(배구·농구 …)인 열마다 그 종목 점수로 넣습니다. 머리글이 "점수"이면 지금 고른 종목에 넣습니다. 명단에 없는 학생은 추가하지 않습니다.</span></div>
+        </div>
+        <div id="skill-report" class="log" hidden></div>
+      </div>
       <div class="table-wrap">
         <table class="roster" id="roster-table">
           <thead>
-            <tr><th title="파일의 출석번호 그대로 (결번은 비어 있음)">출석번호</th><th>이름</th><th>성별</th><th>PAPS 총점(100점)</th><th>성실</th><th>협동</th><th>정의</th><th>배려</th><th>참여 · 자료</th><th></th></tr>
+            <tr><th title="파일의 출석번호 그대로 (결번은 비어 있음)">출석번호</th><th>이름</th><th>성별</th><th>PAPS 총점(100점)</th><th id="th-skill" hidden title="오늘 종목의 수행능력 점수 (0~100점). 3단계에서 종목을 고르거나 추가합니다">수행능력(100점)</th><th>성실</th><th>협동</th><th>정의</th><th>배려</th><th>참여 · 자료</th><th></th></tr>
           </thead>
           <tbody id="roster-body"></tbody>
         </table>
@@ -168,6 +182,27 @@
     <!-- 3. 편성 설정 -->
     <section id="sec-settings" class="card teacher-only">
       <h2>3. 편성 설정 · 방식</h2>
+      <div class="basis-box">
+        <h3>1차로 고르게 맞출 점수 <span class="hint">팀 평균이 비슷해지도록 먼저 맞추는 기준입니다. 그다음 인성 4덕목을 고르게 맞춥니다</span></h3>
+        <div class="row wrap mode-pick">
+          <label class="radio"><input type="radio" name="fitnessBasis" value="paps"> <b>PAPS 총점</b> <span class="hint">건강체력 평가 점수(100점)</span></label>
+          <label class="radio"><input type="radio" name="fitnessBasis" value="skill"> <b>종목 수행능력</b> <span class="hint">오늘 할 종목의 실기·관찰 점수(100점)</span></label>
+          <label class="radio"><input type="radio" name="fitnessBasis" value="mix"> <b>섞기</b> <span class="hint">PAPS와 수행능력을 비율대로 합친 점수</span></label>
+        </div>
+        <div id="sport-row" class="sport-row" hidden>
+          <label>오늘 종목
+            <select id="opt-sport"></select>
+          </label>
+          <button id="btn-sport-add" class="btn small" type="button">＋ 종목 추가</button>
+          <button id="btn-sport-rename" class="btn ghost small adv" type="button">이름 바꾸기</button>
+          <button id="btn-sport-delete" class="btn ghost small danger adv" type="button">종목 삭제</button>
+          <label id="skillWeight-wrap" class="weight" hidden>수행능력 비중 <b id="skillWeight-value"></b>
+            <input type="range" id="opt-skillWeight" min="0" max="100" step="10">
+            <span class="hint">나머지는 PAPS 비중</span>
+          </label>
+          <p id="sport-hint" class="hint"></p>
+        </div>
+      </div>
       <div class="settings-grid">
         <label id="teamCount-wrap">팀 수
           <input type="number" id="opt-teamCount" min="1" max="20" step="1">
@@ -180,9 +215,9 @@
           <label>여자 팀 수 <input type="number" id="opt-teamCountF" min="1" max="12" step="1"></label>
           <span class="hint" id="split-hint"></span>
         </span>
-        <label class="adv">PAPS 허용편차
+        <label class="adv"><span><span class="basis-name">PAPS</span> 허용편차</span>
           <input type="range" id="opt-papsTolerance" min="1" max="15" step="0.5">
-          <span class="hint"><b id="tau-value"></b>점 (100점 만점) · 팀 평균 PAPS 점수의 최대-최소 범위를 이 안에 유지하고, 그 안에서 인성 편차를 최소화. 기본 3점. 1점 이하로 줄이면 팀 수가 많을 때 못 지킬 수 있습니다</span>
+          <span class="hint"><b id="tau-value"></b>점 (100점 만점) · 팀 평균 <span class="basis-name">PAPS</span> 점수의 최대-최소 범위를 이 안에 유지하고, 그 안에서 인성 편차를 최소화. 기본 3점. 1점 이하로 줄이면 팀 수가 많을 때 못 지킬 수 있습니다</span>
         </label>
         <label class="check adv"><input type="checkbox" id="opt-includeBmi"> PAPS 점수에 체지방(BMI) 영역 포함 <span class="hint">끄면 4영역을 100점 만점으로 환산</span></label>
         <label class="adv">학교급 · 학년 <span class="hint">PAPS 기준표 선택 (파일에 학년 열이 있으면 학생별로 적용)</span>

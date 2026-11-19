@@ -813,5 +813,82 @@ test('state: 백업 파일 만들기·가져오기 (같은 이름은 덮어쓰�
   } finally { St.wipeAll(); delete globalThis.localStorage; }
 });
 
+/* ---------- 종목 수행능력 기준 ---------- */
+function withSkills(list, sport, seed, every) {
+  const r = rng(seed);
+  return list.map((s, i) => (every && i % every === 0) ? Object.assign({}, s) : Object.assign({}, s, { skills: { [sport]: Math.round(r() * 100) } }));
+}
+test('prepareStudents 기준 paps: 예전과 같은 점수, 수행능력은 따로 보관', () => {
+  const st = withSkills(makeStudents(20, 3), '배구', 5);
+  const a = S.prepareStudents(makeStudents(20, 3), { schoolLevel: '중', defaultGrade: 1 });
+  const b = S.prepareStudents(st, { schoolLevel: '중', defaultGrade: 1, fitnessBasis: 'paps', sport: '배구' });
+  a.forEach((p, i) => { approx(b[i].papsPoints, p.papsPoints); approx(b[i].papsTotal, p.papsPoints); assert.strictEqual(b[i].papsGrade, p.papsGrade); });
+  assert.strictEqual(b[0].skillPoints, st[0].skills['배구']);
+  assert.strictEqual(b[0].fitnessBasis, 'paps');
+});
+test('prepareStudents 기준 skill: 수행능력 점수로 편성, 없는 학생은 평균 대체, PAPS 보존', () => {
+  const st = withSkills(makeStudents(20, 3), '배구', 5, 4);   // 0·4·8·12·16번은 점수 없음
+  const o = { schoolLevel: '중', defaultGrade: 1, fitnessBasis: 'skill', sport: '배구' };
+  const p = S.prepareStudents(st, o);
+  const have = st.filter(s => s.skills).map(s => s.skills['배구']);
+  const m = have.reduce((a, b) => a + b, 0) / have.length;
+  assert.strictEqual(p[1].papsPoints, st[1].skills['배구']);
+  assert.ok(p[0].papsImputed && p[0].skillImputed); approx(p[0].papsPoints, m);
+  assert.ok(!p[1].papsImputed);
+  assert.strictEqual(p[1].papsGrade, T.gradeFromTotal(st[1].skills['배구']));
+  const base0 = S.prepareStudents(makeStudents(20, 3), { schoolLevel: '중', defaultGrade: 1 });
+  approx(p[1].papsTotal, base0[1].papsPoints);
+  assert.strictEqual(S.fitnessLabel(o), '배구 수행능력');
+  /* 종목을 고르지 않으면 PAPS 그대로 */
+  const q = S.prepareStudents(st, Object.assign({}, o, { sport: '' }));
+  approx(q[1].papsPoints, base0[1].papsPoints); assert.strictEqual(S.fitnessLabel({ fitnessBasis: 'skill', sport: '' }), 'PAPS');
+  /* 범위 밖 값은 0~100 */
+  const c = S.prepareStudents([{ id: 'x', skills: { 배구: 140 } }, { id: 'y', skills: { 배구: -5 } }], o);
+  assert.strictEqual(c[0].papsPoints, 100); assert.strictEqual(c[1].papsPoints, 0);
+});
+test('prepareStudents 기준 mix: 수행능력 × w + PAPS × (1−w)', () => {
+  const st = withSkills(makeStudents(12, 8), '농구', 2);
+  const p = S.prepareStudents(st, { schoolLevel: '중', defaultGrade: 1, fitnessBasis: 'mix', sport: '농구', skillWeight: 0.3 });
+  p.forEach(x => approx(x.papsPoints, 0.3 * x.skillPoints + 0.7 * x.papsTotal, 1e-9));
+  assert.strictEqual(S.fitnessLabel({ fitnessBasis: 'mix', sport: '농구' }), 'PAPS+농구');
+  assert.deepStrictEqual(S.basisSnapshot({ fitnessBasis: 'mix', sport: '농구', skillWeight: 0.3 }), { fitnessBasis: 'mix', sport: '농구', skillWeight: 0.3 });
+});
+test('skillReady: 수행능력 기준인데 종목·점수가 없으면 false', () => {
+  assert.strictEqual(S.skillReady({ options: { fitnessBasis: 'paps' }, students: [] }), true);
+  assert.strictEqual(S.skillReady({ options: { fitnessBasis: 'skill', sport: '' }, students: [] }), false);
+  assert.strictEqual(S.skillReady({ options: { fitnessBasis: 'skill', sport: '배구' }, students: [{ skills: { 농구: 5 } }] }), false);
+  assert.strictEqual(S.skillReady({ options: { fitnessBasis: 'skill', sport: '배구' }, students: [{ skills: { 배구: 5 } }] }), true);
+});
+test('buildTeams 수행능력 기준: 팀 평균 수행능력 범위가 허용편차 안', () => {
+  const st = withSkills(makeStudents(28, 1), '배구', 11);
+  const o = { schoolLevel: '중', defaultGrade: 1, fitnessBasis: 'skill', sport: '배구', teamCount: 6, seed: 3, papsTolerance: 3 };
+  const p = S.prepareStudents(st, o);
+  const r = A.buildTeams(p, o);
+  const byId = {}; p.forEach(x => { byId[x.id] = x; });
+  const means = r.teams.map(t => t.reduce((a, id) => a + byId[id].skillPoints, 0) / t.length);
+  assert.ok(Math.max(...means) - Math.min(...means) <= 3 + 1e-9, '수행능력 팀 평균 범위 ' + (Math.max(...means) - Math.min(...means)).toFixed(2));
+  assert.ok(r.log.some(m => /1차 균등 기준: 배구 수행능력/.test(m)));
+});
+test('extractSkillTable: 종목 열 여러 개, "점수" 머리글, 학번, 범위 밖 값', () => {
+  const a = P.extractSkillTable([['', ''], ['번호', '이름', '배구', '농구 점수', '플로어볼(100점)', '성별'], [1, '가', 80, 120, '', '남'], [2, '나', '', '', ''], ['', '다', 55, 60, 70]], '');
+  assert.deepStrictEqual(a.sports, ['배구', '농구', '플로어볼']);
+  assert.strictEqual(a.records.length, 2); assert.strictEqual(a.clipped, 1); assert.strictEqual(a.skipped, 1);
+  assert.deepStrictEqual(a.records[0], { no: 1, name: '가', scores: { 배구: 80, 농구: 100 } });
+  const b = P.extractSkillTable([['학번', '점수'], ['10105 라', 70]], '배구');
+  assert.deepStrictEqual(b.records[0], { no: 5, name: '라', scores: { 배구: 70 } });
+  const c = P.extractSkillTable([['번호', '점수'], [1, 70]], '');
+  assert.strictEqual(c.records.length, 0); assert.ok(c.warnings.length);
+  const d = P.extractSkillTable([['아무', '내용'], [1, 2]], '배구');
+  assert.strictEqual(d.records.length, 0); assert.ok(/찾지 못했습니다/.test(d.warnings[0]));
+});
+test('hydrate: 예전 세션은 PAPS 기준, 종목 목록·오늘 종목 정리', () => {
+  const St = require(path.join(__dirname, '..', 'js', 'state.js'));
+  const old = St.hydrate({ students: [], options: { teamCount: 4 } });
+  assert.strictEqual(old.options.fitnessBasis, 'paps'); assert.deepStrictEqual(old.sports, []); assert.strictEqual(old.options.skillWeight, 0.5);
+  const s2 = St.hydrate({ students: [], sports: ['배구', '', 3, '농구'], options: { fitnessBasis: 'skill', sport: '축구', skillWeight: 7 } });
+  assert.deepStrictEqual(s2.sports, ['배구', '농구']); assert.strictEqual(s2.options.sport, '배구'); assert.strictEqual(s2.options.skillWeight, 0.5);
+  assert.strictEqual(St.hydrate({ students: [], options: { fitnessBasis: 'zzz' } }).options.fitnessBasis, 'paps');
+});
+
 console.log(`\n${passed} passed, ${failed} failed` + (skipped ? `, ${skipped} skipped (예시 파일 없음)` : ''));
 process.exit(failed ? 1 : 0);

@@ -331,14 +331,73 @@
         if (s.virtues[k] === null) { s.virtues[k] = vMeans[k]; s.virtueImputed = true; }
       });
     });
+    applyFitnessBasis(prepared, options);
     return prepared;
+  }
+
+  /* ---------- 1차 균등 기준 (PAPS / 종목 수행능력 / 섞기) ----------
+   * 편성 로직(알고리즘·드래프트·새로운 조합)은 papsPoints·papsGrade·papsImputed 만 읽으므로,
+   * 여기서 이 세 값을 고른 기준 점수로 바꿔 넣는다. PAPS 원래 값은 papsTotal* 에 남김. */
+  function basisOf(options) {
+    var b = options && options.fitnessBasis;
+    if ((b === 'skill' || b === 'mix') && options.sport) return b;
+    return 'paps';
+  }
+  function skillValue(st, sport) {
+    if (!sport || !st || !st.skills) return null;
+    var v = toNum(st.skills[sport]);
+    return v === null ? null : Math.max(0, Math.min(100, v));
+  }
+  function applyFitnessBasis(prepared, options) {
+    options = options || {};
+    var sport = options.sport || '';
+    var basis = basisOf(options);
+    var vals = prepared.map(function (s) { return skillValue(s, sport); });
+    var sm = mean(vals);
+    if (sm === null) sm = 50;
+    var w = typeof options.skillWeight === 'number' ? Math.max(0, Math.min(1, options.skillWeight)) : 0.5;
+    prepared.forEach(function (s, i) {
+      s.papsTotal = s.papsPoints; s.papsTotalGrade = s.papsGrade; s.papsTotalImputed = s.papsImputed;
+      s.skillSport = sport || null;
+      s.skillImputed = vals[i] === null;
+      s.skillPoints = sport ? (vals[i] === null ? sm : vals[i]) : null;
+      s.fitnessBasis = basis;
+      if (basis === 'skill') {
+        s.papsPoints = s.skillPoints; s.papsImputed = s.skillImputed;
+      } else if (basis === 'mix') {
+        s.papsPoints = w * s.skillPoints + (1 - w) * s.papsTotal;
+        s.papsImputed = s.skillImputed || s.papsTotalImputed;
+      }
+      if (basis !== 'paps') s.papsGrade = T.gradeFromTotal(s.papsPoints);
+    });
+    return prepared;
+  }
+  /* 기준 이름: 'PAPS' · '배구 수행능력' · 'PAPS+배구' */
+  function fitnessLabel(options, short) {
+    var b = basisOf(options);
+    if (b === 'skill') return options.sport + (short ? '' : ' 수행능력');
+    if (b === 'mix') return 'PAPS+' + options.sport;
+    return 'PAPS';
+  }
+  /* 편성 결과에 남기는 기준 (나중에 기준을 바꿔도 어떤 기준으로 짠 편성인지 알 수 있게) */
+  function basisSnapshot(options) {
+    var b = basisOf(options);
+    return { fitnessBasis: b, sport: b === 'paps' ? '' : options.sport, skillWeight: options.skillWeight };
+  }
+  /* 기준을 수행능력/섞기로 골랐는데 종목이 없거나 점수가 있는 학생이 없으면 false */
+  function skillReady(session) {
+    var o = session.options || {};
+    if (o.fitnessBasis !== 'skill' && o.fitnessBasis !== 'mix') return true;
+    if (!o.sport) return false;
+    return (session.students || []).some(function (st) { return skillValue(st, o.sport) !== null; });
   }
 
   var api = {
     toNum: toNum, mean: mean, sd: sd, zScores: zScores, bmiValue: bmiValue, papsItemValues: papsItemValues,
     PAPS_ITEM_KEYS: PAPS_ITEM_KEYS, PAPS_ITEM_LABELS: PAPS_ITEM_LABELS, AREA_ITEMS: AREA_ITEMS, AREA_SHORT: AREA_SHORT,
     gradeKeyFor: gradeKeyFor, computePapsPoints: computePapsPoints, inferFromNeis: inferFromNeis,
-    computeVirtues: computeVirtues, virtuesFromGiven: virtuesFromGiven, prepareStudents: prepareStudents
+    computeVirtues: computeVirtues, virtuesFromGiven: virtuesFromGiven, prepareStudents: prepareStudents,
+    applyFitnessBasis: applyFitnessBasis, basisOf: basisOf, skillValue: skillValue, fitnessLabel: fitnessLabel, skillReady: skillReady, basisSnapshot: basisSnapshot
   };
   root.AgoraScoring = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

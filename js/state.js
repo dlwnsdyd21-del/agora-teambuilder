@@ -11,7 +11,10 @@
     teamCount: 6, genderBalance: true, papsTolerance: 3, includeBmi: true,
     schoolLevel: '중', defaultGrade: 1, papsGivenType: 'score', seed: 1, together: [], apart: [], pinned: {},
     draftMode: 'auto', creditFitnessWeight: 0.6, draftTimerSec: 0, draftAnonymous: true,
-    captains: {}                               // 드래프트 팀 주장: {팀 번호: 학생 id}
+    captains: {},                              // 드래프트 팀 주장: {팀 번호: 학생 id}
+    fitnessBasis: 'paps',                      // 1차 균등 기준: 'paps' | 'skill'(종목 수행능력) | 'mix'(섞기)
+    sport: '',                                 // 오늘 종목 (session.sports 가운데 하나)
+    skillWeight: 0.5                           // 섞기에서 수행능력 비중 (0~1)
   };
   var HISTORY_MAX = 5;                         // 새로운 조합 편성에 참고하는 지난 편성 수
 
@@ -19,7 +22,8 @@
     return {
       version: 1, classLabel: '', updatedAt: null,
       classInfo: null,                         // {grade, cls} — 불러온 자료의 학급 (다른 반 자료 혼입 방지)
-      students: [],                            // 학생: {..., status?: ''|'absent'|'limited'|'role'} (결석·활동 제한·기록/심판은 편성에서 제외), papsOverride?: 교사 수정 PAPS 총점
+      students: [],                            // 학생: {..., status?: ''|'absent'|'limited'|'role'} (결석·활동 제한·기록/심판은 편성에서 제외), papsOverride?: 교사 수정 PAPS 총점, skills?: {종목: 0~100}
+      sports: [],                              // 종목 수행능력 목록 (예: ['배구', '농구'])
       options: JSON.parse(JSON.stringify(DEFAULT_OPTIONS)),
       imports: { paps: null, survey: null },   // {fileName, sheetName, rowCount, mappingSummary}
       result: null,                            // {teams:[[ids]], seed, log, builtAt, source?: 'auto'|'draft', mode?, captains?: [id|null]}
@@ -43,6 +47,12 @@
     if (!Array.isArray(s.students)) s.students = [];
     if (!s.imports) s.imports = { paps: null, survey: null };
     if (!Array.isArray(s.teamHistory)) s.teamHistory = [];
+    if (!Array.isArray(s.sports)) s.sports = [];
+    s.sports = s.sports.filter(function (x) { return typeof x === 'string' && x.trim(); });
+    if (['paps', 'skill', 'mix'].indexOf(s.options.fitnessBasis) < 0) s.options.fitnessBasis = 'paps';
+    if (s.options.sport && s.sports.indexOf(s.options.sport) < 0) s.options.sport = s.sports[0] || '';
+    if (!s.options.sport && s.sports.length) s.options.sport = s.sports[0];
+    if (typeof s.options.skillWeight !== 'number' || !(s.options.skillWeight >= 0 && s.options.skillWeight <= 1)) s.options.skillWeight = DEFAULT_OPTIONS.skillWeight;
     s.options.captains = (s.options.captains && typeof s.options.captains === 'object') ? Object.assign({}, s.options.captains) : {};   // 기본값 객체를 공유하지 않도록 복사
     return s;
   }

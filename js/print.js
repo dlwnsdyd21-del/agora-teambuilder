@@ -169,7 +169,7 @@
 
   /* ---------- ③ 교사용 (개인 점수 · 팀 균형표) ---------- */
   function teacherSheet(m) {
-    var s = m.session, r = s.result, o = s.options;
+    var s = m.session, r = s.result, o = s.options, FL = S.fitnessLabel(o);   // 1차 균등 기준 이름 (PAPS · 배구 수행능력 · PAPS+배구)
     var sheet = sheetEl('teacher-sheet', 'teacher');
     var how = MODE_LABEL[r.mode] || (r.source === 'draft' ? '드래프트' : '교사 편성');
     sheet.appendChild(h('header', { class: 'sh-head' },
@@ -190,7 +190,7 @@
       tb.appendChild(h('tr', { class: 'foot' }, h('td', { class: 'tn', text: '범위 (최대 − 최소)' }), h('td'), h('td'), h('td'),
         h('td', { text: fmt(st.metrics.PAPS.range, 1) }), VK.map(function (k) { return h('td', { text: fmt(st.metrics[k].range, 2) }); })));
       body.appendChild(h('table', { class: 'tc-bal' },
-        h('thead', null, h('tr', null, h('th', { text: (m.split ? g.label + ' ' : '') + '팀 균형' }), h('th', { text: '인원' }), h('th', { text: '남' }), h('th', { text: '여' }), h('th', { text: 'PAPS 평균' }), VK.map(function (k) { return h('th', { text: k }); }))), tb));
+        h('thead', null, h('tr', null, h('th', { text: (m.split ? g.label + ' ' : '') + '팀 균형' }), h('th', { text: '인원' }), h('th', { text: '남' }), h('th', { text: '여' }), h('th', { text: FL + ' 평균' }), VK.map(function (k) { return h('th', { text: k }); }))), tb));
     });
     /* 팀별 개인 점수 */
     var edited = false, imputed = false;
@@ -199,7 +199,7 @@
       var tb = h('tbody');
       ids.forEach(function (id) {
         var p = m.byId[id], cap = m.isCap(t, id), mark = '';
-        if (p.papsDetail && p.papsDetail.overridden) { mark += '*'; edited = true; }
+        if (p.papsDetail && p.papsDetail.overridden && p.fitnessBasis !== 'skill') { mark += '*'; edited = true; }
         if (p.papsImputed) { mark += '†'; imputed = true; }
         if (p.virtueImputed) imputed = true;
         tb.appendChild(h('tr', { class: cap ? 'cap' : '' },
@@ -212,7 +212,7 @@
       grid.appendChild(h('article', { class: 'pt', style: '--team:' + COLORS[t % COLORS.length] },
         h('header', null, h('b', { text: m.teamName(t) }), h('span', { text: ids.length + '명' })),
         h('table', { class: 'tc-table' },
-          h('thead', null, h('tr', null, h('th', { class: 'no', text: '번호' }), h('th', { text: '이름' }), h('th', { text: '성' }), h('th', { text: 'PAPS' }), VK.map(function (k) { return h('th', { text: k }); }))), tb)));
+          h('thead', null, h('tr', null, h('th', { class: 'no', text: '번호' }), h('th', { text: '이름' }), h('th', { text: '성' }), h('th', { text: FL }), VK.map(function (k) { return h('th', { text: k }); }))), tb)));
     });
     body.appendChild(grid);
     sheet.appendChild(body);
