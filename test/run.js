@@ -571,6 +571,13 @@ test('auto 모드: 편성 결과를 라운드별 공개 순서로, fillRemaining
   assert.deepStrictEqual(first, [0, 1, 2, 3, 4, 5]);
   while (!D.isDone(st)) assert.ok(D.pick(st, null, base).ok);
   assert.deepStrictEqual(st.teams.map(t => t.slice().sort()), r.teams.map(t => t.slice().sort()));
+  // 다 공개하기 전에 '완료'를 눌러도 알고리즘이 정한 팀 그대로 저장
+  [0, 5, 13].forEach(k => {
+    const sp = D.initDraft(base, { mode: 'auto', teamCount: 6, seed: 1, autoTeams: r.teams });
+    for (let i = 0; i < k; i++) D.pick(sp, null, base);
+    D.fillRemaining(sp, base);
+    assert.deepStrictEqual(sp.teams.map(t => t.slice().sort()), r.teams.map(t => t.slice().sort()), k + '명 공개 후 완료');
+  });
   // 성별이 치우친 학급(남 13·여 14·미상 1)도 공개가 막히지 않아야 함
   const odd = base.map((s, i) => Object.assign({}, s, { gender: i === 27 ? null : s.gender }));
   const ro = A.buildTeams(odd, { teamCount: 6, seed: 3, genderBalance: true });

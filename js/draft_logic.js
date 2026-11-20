@@ -467,6 +467,16 @@
   /* 남은(미지명) 선수를 슬롯이 남은 팀에 자동 배정 (크레딧 모드 강제 종료용) */
   function fillRemaining(state, prepared) {
     var picked = pickedSet(state);
+    /* 교사 편성: 아직 공개하지 않은 학생은 알고리즘이 정한 팀 그대로 (남은 자리 순서로 넣으면 균형이 깨짐) */
+    if (state.mode === 'auto') {
+      for (var i = state.cursor; i < state.sequence.length; i++) {
+        var sq = state.sequence[i];
+        if (!sq || !sq.id || picked[sq.id]) continue;
+        state.picks.push({ team: sq.team, id: sq.id, round: sq.round, cost: 0, auto: true, at: Date.now() });
+        state.teams[sq.team].push(sq.id);
+        picked[sq.id] = true;
+      }
+    }
     var rest = prepared.filter(function (p) { return !picked[p.id]; });
     rest.sort(function (a, b) { return b.papsPoints - a.papsPoints; });
     rest.forEach(function (p) {
